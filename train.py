@@ -127,11 +127,24 @@ def main(args):
         print("Pred Tree: %s" % get_tree(action, sent_str))
         print("Gold Tree: %s" % get_tree(gold_binary_trees[0], sent_str))
 
+      #break
     args.max_length = min(args.final_max_length, args.max_length + args.len_incr)
     print('--------------------------------')
     print('Checking validation perf...')    
     val_ppl, val_f1 = eval(val_data, model)
     print('--------------------------------')
+
+    fsave = args.save_path + "/{}.pt".format(epoch)
+    print('Saving {} checkpoint to {}'.format(epoch, fsave))
+    checkpoint = {
+      'args': args.__dict__,
+      'model': model.cpu(),
+      'word2idx': train_data.word2idx,
+      'idx2word': train_data.idx2word
+    }
+    torch.save(checkpoint, fsave)
+    model.cuda()
+
     if val_ppl < best_val_ppl:
       best_val_ppl = val_ppl
       best_val_f1 = val_f1
@@ -141,9 +154,10 @@ def main(args):
         'word2idx': train_data.word2idx,
         'idx2word': train_data.idx2word
       }
-      print('Saving checkpoint to %s' % args.save_path)
-      torch.save(checkpoint, args.save_path)
+      print('Saving the best checkpoint to %s' % args.save_path + "/best.pt")
+      torch.save(checkpoint, args.save_path + "/best.pt")
       model.cuda()
+    #break
 
 def eval(data, model):
   model.eval()
@@ -205,4 +219,6 @@ def eval(data, model):
 
 if __name__ == '__main__':
   args = parser.parse_args()
+  print('cuda:{}@{}'.format(args.gpu, os.uname().nodename))
+  print(args)
   main(args)
