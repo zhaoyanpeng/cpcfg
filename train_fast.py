@@ -18,12 +18,16 @@ from utils import *
 from models import CompPCFG
 from torch.nn.init import xavier_uniform_
 
+from torch_struct import SentCFG
+from torch_struct.networks import RoughCCFG, CompoundCFG
+
 parser = argparse.ArgumentParser()
 
 # Data path options
 parser.add_argument('--train_file', default='data/ptb-train.pkl')
 parser.add_argument('--val_file', default='data/ptb-val.pkl')
 parser.add_argument('--save_path', default='compound-pcfg.pt', help='where to save the model')
+parser.add_argument('--model_type', default='1st', type=str, help='model name (1st/2nd)')
 
 # Model options
 # Generative model parameters
@@ -47,7 +51,7 @@ parser.add_argument('--gpu', default=0, type=int, help='which gpu to use')
 parser.add_argument('--seed', default=3435, type=int, help='random seed')
 parser.add_argument('--print_every', type=int, default=1000, help='print stats after N batches')
 
-def main(args):
+def main(args, print):
   np.random.seed(args.seed)
   torch.manual_seed(args.seed)
   train_data = Dataset(args.train_file)
@@ -58,8 +62,16 @@ def main(args):
   print('Train: %d sents / %d batches, Val: %d sents / %d batches' % 
         (train_data.sents.size(0), len(train_data), val_data.sents.size(0), len(val_data)))
   print('Vocab size: %d, Max Sent Len: %d' % (vocab_size, max_len))
-  print('Save Path', args.save_path)
+  print('Save Path {}'.format(args.save_path))
   cuda.set_device(args.gpu)
+  
+  model = RoughCCFG if args.model_type == '1st' else CompoundCFG
+  model = model(vocab_size, args.nt_states, args.t_states, 
+                h_dim = args.h_dim,
+                w_dim = args.w_dim,
+                z_dim = args.z_dim,
+                s_dim = args.state_dim)
+  """
   model = CompPCFG(vocab = vocab_size,
                    state_dim = args.state_dim,
                    t_states = args.t_states,
@@ -70,6 +82,7 @@ def main(args):
   for name, param in model.named_parameters():    
     if param.dim() > 1:
       xavier_uniform_(param)
+  """
   print("model architecture")
   print(model)
   model.train()
@@ -95,8 +108,19 @@ def main(args):
         continue
       sents = sents.cuda()
       optimizer.zero_grad()
+      """
       nll, kl, binary_matrix, argmax_spans = model(sents, argmax=True)      
       (nll+kl).mean().backward()
+      """
+      params, kl = model(sents)
+      lengths = torch.tensor([length] * batch_size, device=sents.device).long() 
+      dist = SentCFG(params, lengths=lengths)
+      spans = dist.argmax[-1]
+      argmax_spans, tree = extract_parses(spans, lengths.tolist(), inc=0)
+      nll = -dist.partition
+      kl = torch.zeros_like(nll) if kl is None else kl
+      (nll + kl).mean().backward()
+
       train_nll += nll.sum().item()
       train_kl += kl.sum().item()
       torch.nn.utils.clip_grad_norm_(model.parameters(), args.max_grad_norm)      
@@ -104,7 +128,7 @@ def main(args):
       num_sents += batch_size
       num_words += batch_size * (length + 1) # we implicitly generate </s> so we explicitly count it
       for bb in range(batch_size):
-        span_b = [(a[0], a[1]) for a in argmax_spans[bb]] #ignore labels
+        span_b = [(a[0], a[1]) for a in argmax_spans[bb] if a[0] != a[1]] #ignore labels
         span_b_set = set(span_b[:-1])
         update_stats(span_b_set, [set(gold_spans[bb][:-1])], all_stats)
       if b % args.print_every == 0:
@@ -121,8 +145,8 @@ def main(args):
                np.exp((train_nll + train_kl)/num_words), best_val_ppl, best_val_f1, 
                all_f1[0], num_sents / (time.time() - start_time)))
         # print an example parse
-        tree = get_tree_from_binary_matrix(binary_matrix[0], length)
-        action = get_actions(tree)
+        action = get_actions(tree[0])
+        #tree = get_tree_from_binary_matrix(binary_matrix[0], length)
         sent_str = [train_data.idx2word[word_idx] for word_idx in list(sents[0].cpu().numpy())]
         print("Pred Tree: %s" % get_tree(action, sent_str))
         print("Gold Tree: %s" % get_tree(gold_binary_trees[0], sent_str))
@@ -131,7 +155,7 @@ def main(args):
     args.max_length = min(args.final_max_length, args.max_length + args.len_incr)
     print('--------------------------------')
     print('Checking validation perf...')    
-    val_ppl, val_f1 = eval(val_data, model)
+    val_ppl, val_f1 = eval(val_data, model, print)
     print('--------------------------------')
 
     fsave = args.save_path + "/{}.pt".format(epoch)
@@ -159,7 +183,7 @@ def main(args):
       model.cuda()
     #break
 
-def eval(data, model):
+def eval(data, model, print):
   model.eval()
   num_sents = 0
   num_words = 0
@@ -176,13 +200,23 @@ def eval(data, model):
       # note that for unsuperised parsing, we should do model(sents, argmax=True, use_mean = True)
       # but we don't for eval since we want a valid upper bound on PPL for early stopping
       # see eval.py for proper MAP inference
+      """
       nll, kl, binary_matrix, argmax_spans = model(sents, argmax=True)
+      """
+      params, kl = model(sents)
+      lengths = torch.tensor([length] * batch_size, device=sents.device).long() 
+      dist = SentCFG(params, lengths=lengths)
+      spans = dist.argmax[-1]
+      argmax_spans, tree = extract_parses(spans, lengths.tolist(), inc=0)
+      nll = -dist.partition
+      kl = torch.zeros_like(nll) if kl is None else kl
+
       total_nll += nll.sum().item()
       total_kl  += kl.sum().item()
       num_sents += batch_size
       num_words += batch_size*(length +1) # we implicitly generate </s> so we explicitly count it
       for b in range(batch_size):
-        span_b = [(a[0], a[1]) for a in argmax_spans[b]] #ignore labels
+        span_b = [(a[0], a[1]) for a in argmax_spans[b] if a[0] != a[1]] #ignore labels
         span_b_set = set(span_b[:-1])        
         gold_b_set = set(gold_spans[b][:-1])
         tp, fp, fn = get_stats(span_b_set, gold_b_set) 
@@ -219,6 +253,18 @@ def eval(data, model):
 
 if __name__ == '__main__':
   args = parser.parse_args()
-  print('cuda:{}@{}'.format(args.gpu, os.uname().nodename))
-  print(args)
-  main(args)
+  logger = logging.getLogger(__name__)
+  logger.setLevel(logging.INFO)
+  formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+  handler = logging.FileHandler(os.path.join(args.save_path, 'train.log'), 'w')
+  handler.setLevel(logging.INFO)
+  handler.setFormatter(formatter)
+  logger.addHandler(handler)
+  console = logging.StreamHandler()
+  console.setLevel(logging.INFO)
+  console.setFormatter(formatter)
+  logger.addHandler(console)
+  logger.propagate = False
+  logger.info('cuda:{}@{}'.format(args.gpu, os.uname().nodename))
+  logger.info(args)
+  main(args, logger.info)

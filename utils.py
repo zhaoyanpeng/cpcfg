@@ -5,6 +5,38 @@ import random
 import torch
 import nltk
 
+def extract_parse(span, length, inc=1):
+    tree = [(i, str(i)) for i in range(length)]
+    tree = dict(tree)
+    spans = []
+    N = span.shape[0]
+    cover = span.nonzero()
+    for i in range(cover.shape[0]):
+        w, r, A = cover[i].tolist()
+        w = w + inc 
+        r = r + w 
+        l = r - w 
+        spans.append((l, r, A))
+        if l != r:
+            span = '({} {})'.format(tree[l], tree[r])
+            tree[r] = tree[l] = span
+    return spans, tree[0]
+
+def extract_parses(matrix, lengths, kbest=False, inc=1):
+    batch = matrix.shape[1] if kbest else matrix.shape[0]
+    spans = []
+    trees = []
+    for b in range(batch):
+        if kbest:
+            span, tree = extract_parses(
+                matrix[:, b], [lengths[b]] * matrix.shape[0], kbest=False, inc=inc
+            ) 
+        else:
+            span, tree = extract_parse(matrix[b], lengths[b], inc=inc)
+        trees.append(tree)
+        spans.append(span)
+    return spans, trees 
+
 def all_binary_trees(n):
   #get all binary trees of length n
   def is_tree(tree, n):
