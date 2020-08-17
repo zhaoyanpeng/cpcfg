@@ -17,45 +17,38 @@ from data import Dataset
 from PCFG import PCFG
 from utils import *
 from models import CompPCFG
+from model_fast import CPCFG
 from torch.nn.init import xavier_uniform_
-
 from torch_struct import SentCFG
-from torch_struct.networks import CPCFG, RoughCCFG, CompoundCFG
-from torch_struct.networks import ACompPCFG as YoonPCFG
 
 
-mappings = {
-    "t_emb": "term_emb",
-    "nt_emb": "nonterm_emb",
-    "root_mlp.1.lin1": "root_mlp.1.linear.0",
-    "root_mlp.1.lin2": "root_mlp.1.linear.2",
-    "root_mlp.2.lin1": "root_mlp.2.linear.0",
-    "root_mlp.2.lin2": "root_mlp.2.linear.2",
-    "enc_params": "enc_out",
-    "vocab_mlp.0": "term_mlp.0",
-    "vocab_mlp.1.lin1": "term_mlp.1.linear.0",
-    "vocab_mlp.1.lin2": "term_mlp.1.linear.2",
-    "vocab_mlp.2.lin1": "term_mlp.2.linear.0",
-    "vocab_mlp.2.lin2": "term_mlp.2.linear.2",
-    "vocab_mlp.3": "term_mlp.3",
-}
-
-def create_state_dict(model, mappings):
-    dict_items = dict()
-    new_mappings = dict()
-    for k, v in model.state_dict().items():
-        name_fields = k.split(".")
-        key = ".".join(name_fields[:-1])
-        key = name_fields[-1] if key == "" else key
-        if key in mappings:
-            key = mappings[key]
-            if len(name_fields) > 1:
-                key = "{}.{}".format(key, name_fields[-1])
-        else:
-            key = k
-        dict_items[key] = v
-        new_mappings[k] = key 
-    return dict_items, new_mappings
+def regularize(params, device, args, grad=False):
+    rule_H = torch.tensor(0.0, device=device, requires_grad=grad)
+    rule_D = torch.tensor(0.0, device=device, requires_grad=grad)
+    rule_C = torch.tensor(0.0, device=device, requires_grad=grad)
+    if params is not None and (args.reg_h_alpha != 0. or 
+        args.reg_d_alpha > 0. or args.reg_c_alpha > 0.):
+        rule_lprobs = params[1]
+        batch_size = rule_lprobs.size(0)
+        rule_lprobs = rule_lprobs.view(batch_size, args.nt_states, -1)
+        rule_probs = rule_lprobs.exp()
+        if args.reg_h_alpha != 0.: # minimize entropy
+            rule_H = -(rule_probs * rule_lprobs).sum(-1).mean(-1)
+            rule_H = rule_H * args.reg_h_alpha
+        if args.reg_d_alpha > 0.: # maximize prob. dist. among rules of diff. LHS 
+            rule_D = torch.matmul(rule_probs, rule_probs.transpose(-1, -2))
+            I = torch.arange(args.nt_states, device=device).long()
+            rule_D[:, I, I] = 0 
+            rule_D = rule_D.sqrt().sum(-1).mean(-1) / 2
+            rule_D = rule_D * args.reg_d_alpha
+        if args.reg_c_alpha > 0.: # rule prob. should be consistent across diff. PCFG 
+            rule_probs = rule_probs.transpose(0, 1)
+            rule_C = torch.matmul(rule_probs, rule_probs.transpose(-1, -2))
+            I = torch.arange(batch_size, device=device).long()
+            rule_C[:, I, I] = 0 
+            rule_C = rule_C.sqrt().sum(-1).mean(-2) / 2
+            rule_C = rule_C * args.reg_c_alpha
+    return rule_H, rule_D, rule_C
 
 parser = argparse.ArgumentParser()
 
@@ -63,7 +56,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--train_file', default='data/ptb-train.pkl')
 parser.add_argument('--val_file', default='data/ptb-val.pkl')
 parser.add_argument('--save_path', default='compound-pcfg.pt', help='where to save the model')
-parser.add_argument('--model_type', default='1st', type=str, help='model name (1st/2nd)')
+parser.add_argument('--model_type', default='4th', type=str, help='model name (1st/2nd)')
 parser.add_argument('--infer_fast', default=True, type=bool, help='model name (1st/2nd)')
 parser.add_argument('--model_init', default=None, type=str, help='load a model')
 parser.add_argument('--perturb_it', default=False, type=str, help='perturb parameter values')
@@ -94,7 +87,7 @@ parser.add_argument('--final_max_length', default=40, type=int, help='final max 
 parser.add_argument('--beta1', default=0.75, type=float, help='beta1 for adam')
 parser.add_argument('--beta2', default=0.999, type=float, help='beta2 for adam')
 parser.add_argument('--gpu', default=0, type=int, help='which gpu to use')
-parser.add_argument('--seed', default=3435, type=int, help='random seed')
+parser.add_argument('--seed', default=1213, type=int, help='random seed')
 parser.add_argument('--print_every', type=int, default=1000, help='print stats after N batches')
 # Regularization strength
 parser.add_argument('--reg_h_alpha', default=0., type=float, help='entropy of PCFG')
@@ -116,13 +109,7 @@ def main(args, print):
   print('Save Path {}'.format(args.save_path))
   cuda.set_device(args.gpu)
   
-  if args.model_type == '1st':
-      model = RoughCCFG  
-  elif args.model_type == '2nd':
-      model = CompoundCFG 
-  elif args.model_type == '3rd':
-      model = YoonPCFG 
-  elif args.model_type == '4th':
+  if args.model_type == '4th':
       model = CPCFG
   else:
       raise NameError("Invalid parser type: {}".format(opt.parser_type)) 
@@ -138,20 +125,7 @@ def main(args, print):
                   w_dim = args.w_dim,
                   z_dim = args.z_dim,
                   s_dim = args.state_dim, **kwarg)
-    if args.model_type == '2nd' and args.model_init:
-        global mappings
-        checkpoint = torch.load(args.model_init, map_location='cpu')
-        init_model = checkpoint["model"]
-        state_dict, mappings = create_state_dict(init_model, mappings)
-        model.update_state_dict(state_dict)
-
-        old_state_dict = model.state_dict()
-        for k, v in init_model.named_parameters():
-            key = mappings[k]
-            v2 = old_state_dict[key]
-            eq = torch.equal(v, v2)
-            print("P: {} -> {} {} {}".format(k, key, v.size(), eq))
-    elif args.model_init:
+    if args.model_init:
         checkpoint = torch.load(args.model_init, map_location='cpu')
         init_model = checkpoint["model"]
 
@@ -160,12 +134,8 @@ def main(args, print):
             new_state_dict = new_model.state_dict()
             for k, v1 in new_model.named_parameters():
                 v2 = old_state_dict[k]
-                #v0 = v2.data * 0.4 + v1.data * 0.6
                 v0 = v2.data * v1.data
                 v1.data.copy_(v0) 
-                #eq = torch.equal(new_state_dict[k], v1)
-                #print("P: {} {}".format(k, eq))
-
         if not args.perturb_it:
             print("override parser's params.")
             model.load_state_dict(init_model.state_dict())
@@ -184,23 +154,6 @@ def main(args, print):
     for name, param in model.named_parameters():    
       if param.dim() > 1:
         xavier_uniform_(param)
-
-    old_state_dict = model.state_dict()
-
-    np.random.seed(args.seed)
-    torch.manual_seed(args.seed)
-
-    from torch_struct.networks import ACompPCFG as model 
-    model = model(vocab_size, args.nt_states, args.t_states, 
-                  h_dim = args.h_dim,
-                  w_dim = args.w_dim,
-                  z_dim = args.z_dim,
-                  s_dim = args.state_dim)
-
-    for k, v in model.named_parameters():
-        v2 = old_state_dict[k]
-        eq = torch.equal(v, v2)
-        print("P: {} -> {} {} {}".format(k, "", v.size(), eq))
 
   pcfg = None if args.infer_fast else PCFG(args.nt_states, args.t_states)
 
@@ -223,10 +176,6 @@ def main(args, print):
   best_val_f1 = 0
   epoch = 0
 
-  #val_ppl, val_f1 = eval(val_data, model, print, pcfg)
-  #import sys
-  #sys.exit(0)
-  
   if args.data_random: # reset data randomness
     seed = 1847 if args.keep_random else args.seed
     print("random seed {} for data shuffling.".format(seed))
@@ -239,6 +188,7 @@ def main(args, print):
     print('Starting epoch %d' % epoch)
     train_nll = 0.
     train_kl = 0.
+    total_h, total_d, total_c = 0., 0., 0.
     num_sents = 0.
     num_words = 0.
     all_stats = [[0., 0., 0.]]
@@ -246,14 +196,6 @@ def main(args, print):
     for i in np.random.permutation(len(train_data)):
       b += 1
       sents, length, batch_size, _, gold_spans, gold_binary_trees, _ = train_data[i]      
-      """ 
-      print(i)
-      if b > 10: import sys; sys.exit() 
-      sent_str = [train_data.idx2word[word_idx] for word_idx in list(sents[0].cpu().numpy())]
-      if b == 1000:
-        print("Gold Tree: %s" % get_tree(gold_binary_trees[0], sent_str))
-      #continue
-      """ 
       if length > args.max_length or length == 1: #length filter based on curriculum 
         continue
       sents = sents.cuda()
@@ -275,12 +217,14 @@ def main(args, print):
         with torch.no_grad():
           max_score, binary_matrix, argmax_spans = pcfg._viterbi(*params)
 
-      #print(kl.tolist())
-      #print(nll.tolist())
-      #print(" ".join(sent_str))
+      rule_H, rule_D, rule_C = regularize(params, sents.device, args)
+      reg = (rule_H + rule_D - rule_C).mean()
+      total_h += rule_H.sum().item()
+      total_d += rule_D.sum().item()
+      total_c += rule_C.sum().item()
 
       kl = torch.zeros_like(nll) if kl is None else kl
-      (nll + kl).mean().backward()
+      (nll + kl + reg).mean().backward()
       train_nll += nll.sum().item()
       train_kl += kl.sum().item()
       torch.nn.utils.clip_grad_norm_(model.parameters(), args.max_grad_norm)      
@@ -297,10 +241,12 @@ def main(args, print):
         gparam_norm = sum([p.grad.norm()**2 for p in model.parameters() 
                            if p.grad is not None]).item()**0.5
         log_str = 'Epoch: %d, Batch: %d/%d, |Param|: %.6f, |GParam|: %.2f,  LR: %.4f, ' + \
+                  'H: %.3f, D: %.3f, C: %.3f, ' + \
                   'ReconPPL: %.2f, KL: %.4f, PPLBound: %.2f, ValPPL: %.2f, ValF1: %.2f, ' + \
                   'CorpusF1: %.2f, Throughput: %.2f examples/sec'
         print(log_str %
               (epoch, b, len(train_data), param_norm, gparam_norm, args.lr, 
+               total_h / num_sents, total_d / num_sents, total_c / num_sents,
                np.exp(train_nll / num_words), train_kl /num_sents, 
                np.exp((train_nll + train_kl)/num_words), best_val_ppl, best_val_f1, 
                all_f1[0], num_sents / (time.time() - start_time)))
@@ -313,7 +259,7 @@ def main(args, print):
         sent_str = [train_data.idx2word[word_idx] for word_idx in list(sents[0].cpu().numpy())]
         print("Pred Tree: %s" % get_tree(action, sent_str))
         print("Gold Tree: %s" % get_tree(gold_binary_trees[0], sent_str))
-      #break
+    
     args.max_length = min(args.final_max_length, args.max_length + args.len_incr)
     print('--------------------------------')
     print('Checking validation perf...')    
@@ -343,7 +289,6 @@ def main(args, print):
       print('Saving the best checkpoint to %s' % args.save_path + "/best.pt")
       torch.save(checkpoint, args.save_path + "/best.pt")
       model.cuda()
-    #break
 
 def eval(data, model, print, pcfg):
   model.eval()
@@ -351,6 +296,7 @@ def eval(data, model, print, pcfg):
   num_words = 0
   total_nll = 0.
   total_kl = 0.
+  total_h, total_d, total_c = 0., 0., 0.
   corpus_f1 = [0., 0., 0.] 
   sent_f1 = [] 
   with torch.no_grad():
@@ -381,6 +327,12 @@ def eval(data, model, print, pcfg):
       kl = torch.zeros_like(nll) if kl is None else kl
       total_nll += nll.sum().item()
       total_kl  += kl.sum().item()
+
+      rule_H, rule_D, rule_C = regularize(params, sents.device, args)
+      total_h += rule_H.sum().item()
+      total_d += rule_D.sum().item()
+      total_c += rule_C.sum().item()
+
       num_sents += batch_size
       num_words += batch_size*(length +1) # we implicitly generate </s> so we explicitly count it
       for b in range(batch_size):
@@ -415,8 +367,11 @@ def eval(data, model, print, pcfg):
   recon_ppl = np.exp(total_nll / num_words)
   ppl_elbo = np.exp((total_nll + total_kl)/num_words) 
   kl = total_kl /num_sents
-  print('ReconPPL: %.2f, KL: %.4f, PPL (Upper Bound): %.2f' %
-        (recon_ppl, kl, ppl_elbo))
+
+  h, d, c = total_h / num_sents, total_d / num_sents, total_c / num_sents
+
+  print('ReconPPL: %.2f, KL: %.4f, PPL (Upper Bound): %.2f, H: %.3f, D: %.3f, C: %.3f' %
+        (recon_ppl, kl, ppl_elbo, h, d, c))
   print('Corpus F1: %.2f, Sentence F1: %.2f' %
         (corpus_f1*100, sent_f1*100))
   model.train()
