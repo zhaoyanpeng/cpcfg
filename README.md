@@ -7,7 +7,7 @@ Notably, it takes only **25** minutes per epoch on a GeForce GTX 1080 Ti. I will
 ## Data
 The same data processing as in Yoon's [code](https://github.com/harvardnlp/compound-pcfg#data).
 
-## Train
+## Learning 
 Replace `DROOT` by your data directory before running.
 ```shell
 python train_fast.py \
@@ -16,7 +16,7 @@ python train_fast.py \
   --save_path "./model"
 ```
 
-## Test
+## Parsing 
 Specify `MODEL` and `DATA` before running.
 ```shell
 python eval_best.py \
@@ -28,6 +28,17 @@ python eval_best.py \
 
 ## Dependencies
 It requires a tailored [Torch-Struct](https://github.com/zhaoyanpeng/pytorch-struct).
+```shell
+git clone --branch messup https://github.com/zhaoyanpeng/fast-cpcfg.git
+cd fast-cpcfg
+virtualenv -p python3.7 ./pyenv/oops
+source ./pyenv/oops/bin/activate
+pip install --upgrade pip
+pip install -r requirements.txt
+git clone --branch infer_pos_tag https://github.com/zhaoyanpeng/pytorch-struct.git
+cd pytorch-struct
+pip install -e .
+```
 
 ## Acknowledgements
 This repo is developed based on [C-PCFGs](https://github.com/harvardnlp/compound-pcfg) and [Torch-Struct](https://github.com/harvardnlp/pytorch-struct).

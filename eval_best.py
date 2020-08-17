@@ -9,7 +9,7 @@ import torch
 from torch import cuda
 
 from torch_struct import SentCFG
-from torch_struct.networks import CPCFG, RoughCCFG, CompoundCFG
+from model_fast import CPCFG
 
 from PCFG import PCFG
 from utils import get_stats, get_nonbinary_spans, extract_parses
