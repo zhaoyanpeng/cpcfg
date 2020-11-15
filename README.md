@@ -3,7 +3,7 @@
 ## Model
 This implementation reaches an average sentence-level F1 **56%**, slightly higher than Yoon's **55.2%**. 
 Notably, it takes only **25** minutes per epoch on a GeForce GTX 1080 Ti. ~~I will release a report in a couple of
-days.~~ Here is the [report](https://zhaoyanpeng.github.io/files/An%20Empirical%20Study%20of%20Compound%20PCFGs.pdf).
+days.~~ Here is the report: [An Empirical Study of Compound PCFGs](https://zhaoyanpeng.github.io/files/An%20Empirical%20Study%20of%20Compound%20PCFGs.pdf).
 
 ## Data
 I am using the same data processing as in Yoon's [code](https://github.com/harvardnlp/compound-pcfg#data). If you are looking for a **unified data pipeline** for [WSJ](https://catalog.ldc.upenn.edu/LDC99T42), [CTB](https://catalog.ldc.upenn.edu/LDC2005T01), and [SPMRL](https://dokufarm.phil.hhu.de/spmrl2014/), I suggest you have a look at [XCFG](https://github.com/zhaoyanpeng/xcfg). It makes data creation easier. If you still find it annoying processing all data from scratch, contact me and I can give you access to all processed data, but you must have been granted licenses for these treebanks.
@@ -20,7 +20,7 @@ Here is an overview of model performance on WSJ, CTB, and SPMRL. Find more detai
 
 <details><summary>On SPMRL</summary><p>
 
-| Model | Basque | German | French | Hebrew | Hungarian | Korean | Polish | Polish |
+| Model | Basque | German | French | Hebrew | Hungarian | Korean | Polish | Swedish |
 |:-:|:-|:-|:-|:-|:-|:-|:-|:-|
 | N-PCFG | **30.2**<sub>±0.9<sub> | **37.8**<sub>±1.7<sub> | **42.2**<sub>±1.4<sub> | **41.0**<sub>±0.6<sub> | 37.9<sub>±0.8<sub> | 25.7<sub>±2.8<sub> | 31.7<sub>±1.8<sub> | 14.5<sub>±12.7<sub> |
 | C-PCFG | 27.9<sub>±2.0<sub> | 37.3<sub>±1.8<sub> | 40.5<sub>±0.8<sub> | 39.2<sub>±1.2<sub> | **38.3**<sub>±0.7<sub> | **27.7**<sub>±2.8<sub> | **32.4**<sub>±1.1<sub> | **23.7**<sub>±14.3<sub> |
