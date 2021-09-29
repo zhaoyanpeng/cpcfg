@@ -1,0 +1,33 @@
+name: 'NaivePCFG' 
+##  base model 
+num_tag: 60 #num of preterminal states
+num_state: 30 #num of nonterminal states
+z_dim: 64 #VAE z dimension
+s_dim: 256 #symbol embedding dimension
+h_dim: 512 #hidden dim for variational LSTM
+w_dim: 512 #embedd dim for variational LSTM
+##  model ablation
+share_term: False #share preterminal rules
+share_rule: False #share binary rules
+share_root: False #share binary rules
+double_dim: False #how to encode z
+multi_view: False #how to encode z
+tied_terms: False #how to encode z
+with_pcfgs: False #how to encode z
+lang_dim: 0 #dim of language embed
+use_mean: False #how to use z
+##  encode surface features 
+wo_enc_emb: False #how to encode sentences 
+w2vec_file: "" #pretrained word vector file (allow finetuning)
+mlm_model: bert-base-multilingual-cased #masked language models
+as_encoder: True # mlm as encoder
+fine_tuned: False # will tune mlm? 
+mlm_pooler: max #pooled sentence repr
+mlm_out_dim: -1 #output embedding dim
+##  sub-pcfg model 
+vq_quant: -512 #number of quantized vectors
+vq_decay: 0.99 #decay rate in exponential moving average
+select_key: "" #how to parameterize binary rules
+##  initialization
+perturb_it: False #perturb parameter values
+model_init: ${model_init}

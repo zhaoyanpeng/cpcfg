@@ -1,0 +1,9 @@
+name: SRNNTextEncoder
+w_dim: 512
+h_dim: 512
+embed_dim: 512 
+num_state: ${model.pcfg.num_state}
+share_emb: False 
+span_pooler: mean
+semantic_dim: 512
+syntatic_dim: 512

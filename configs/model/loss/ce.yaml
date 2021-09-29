@@ -1,0 +1,5 @@
+name: 'CELossHead'
+layers: []
+scaling: True 
+scale_max: null
+lambd_cst: 0.01

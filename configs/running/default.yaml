@@ -1,0 +1,12 @@
+epochs: 30 
+start_max_length: 30 
+final_max_length: 40 
+inc_length: 1 
+peep_rate: 1 
+save_rate: 3 
+start_ppl: -1
+save_epoch: False
+optim_rate: 1
+cross_step: 3
+infer_fast: True 
+train_bili: False 

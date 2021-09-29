@@ -1,0 +1,5 @@
+name: 'HingeLossHead'
+layers: []
+margin: 2e-1 
+eps: 1e-8
+lambd_cst: 0.01

@@ -1,0 +1,17 @@
+alias_root: "./out" 
+model_root: ${alias_root} 
+alias_name: "test"
+model_name: "test"
+model_init: ${model_root}/${model_name}/xxx.pth 
+model_file: "00000204.pth"
+monitor: Monitor
+worker: XPCFG 
+verbose: True 
+seed: 1213
+eval: True 
+rank: -1
+mode: "dp"
+num_proc: 0 # always 0 in ddp mode 
+num_gpus: 4 
+port: 22829
+dist_url: "tcp://localhost:${port}"
