@@ -1,15 +1,17 @@
 # A Fast Implementation of C-PCFGs
 
+**Update (09/30/2021):** I have been working on a better implementation of XCFG models. Checkout the [beta](https://github.com/zhaoyanpeng/cpcfg/tree/beta) branch and give a try!
+
 ## Model
 This implementation reaches an average sentence-level F1 **56%**, slightly higher than Yoon's **55.2%**. 
 Notably, it takes only **25** minutes per epoch on a GeForce GTX 1080 Ti. ~~I will release a report in a couple of
-days.~~ Here is the report: [An Empirical Study of Compound PCFGs](https://zhaoyanpeng.github.io/files/An%20Empirical%20Study%20of%20Compound%20PCFGs.pdf).
+days.~~ Here is the report: [An Empirical Study of Compound PCFGs](https://arxiv.org/abs/2103.02298).
 
 ## Data
 I am using the same data processing as in Yoon's [code](https://github.com/harvardnlp/compound-pcfg#data). If you are looking for a **unified data pipeline** for [WSJ](https://catalog.ldc.upenn.edu/LDC99T42), [CTB](https://catalog.ldc.upenn.edu/LDC2005T01), and [SPMRL](https://dokufarm.phil.hhu.de/spmrl2014/), I suggest you have a look at [XCFG](https://github.com/zhaoyanpeng/xcfg). It makes data creation easier. If you still find it annoying processing all data from scratch, contact me and I can give you access to all processed data, but you must have been granted licenses for these treebanks.
 
 ## Mean sentence-level F1 numbers
-Here is an overview of model performance on WSJ, CTB, and SPMRL. Find more details in the [report](https://zhaoyanpeng.github.io/files/An%20Empirical%20Study%20of%20Compound%20PCFGs.pdf).
+Here is an overview of model performance on WSJ, CTB, and SPMRL. Find more details in the [report](https://arxiv.org/abs/2103.02298).
 
 <details><summary>On WSJ and CTB</summary></details>
 
@@ -61,14 +63,18 @@ pip install -e .
 ```
 
 ## Citation
-If you use the fast implementation of C-PCFGs in your research or wish to refer to the results in the [report](https://zhaoyanpeng.github.io/files/An%20Empirical%20Study%20of%20Compound%20PCFGs.pdf), please use the following BibTeX entries.
+If you use the fast implementation of C-PCFGs in your research or wish to refer to the results in the [report](https://arxiv.org/abs/2103.02298), please use the following BibTeX entries.
 ```
-@article{zhao2020xcfg,
-  author = {Zhao, Yanpeng},
-  title  = {An Empirical Study of Compound PCFGs},
-  journal= {https://github.com/zhaoyanpeng/cpcfg},
-  url    = {https://github.com/zhaoyanpeng/cpcfg},
-  year   = {2020}
+@inproceedings{zhao-titov-2021-empirical,
+    title = "An Empirical Study of Compound {PCFG}s",
+    author = "Zhao, Yanpeng and Titov, Ivan",
+    booktitle = "Proceedings of the Second Workshop on Domain Adaptation for NLP",
+    month = apr,
+    year = "2021",
+    address = "Kyiv, Ukraine",
+    publisher = "Association for Computational Linguistics",
+    url = "https://aclanthology.org/2021.adaptnlp-1.17",
+    pages = "166--171",
 }
 ```
 ```
