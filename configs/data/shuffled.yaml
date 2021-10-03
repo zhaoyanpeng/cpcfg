@@ -1,0 +1,21 @@
+pair_root: "./data/parallel/zh.en/data"
+data_root: "./data/spmrl2014/data.clean"
+enc_pairs: False # only for enncoding sentence pairs 
+lang: english
+pair_name: notafile 
+data_name: ${data.lang}-train.pkl
+eval_name: ${data.lang}-val.pkl
+test_name: ${data.lang}-test.pkl
+data_keys: "" 
+data_seed: null #sync randomness for data sampling 
+npz_pair_name: ""
+train_samples: 1. # fraction
+eval_samples: 250 
+test_samples: 5000
+extra_vocab: corpus.jieba.clean.tok
+batch_size: 4 
+min_length: 2 
+max_length: 40 
+rnd_length: True #batch of sentences of diff. lengths
+usez_tag: False 
+gold_tag: False 

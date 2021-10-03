@@ -7,7 +7,6 @@ import torch
 import numpy as np
 from torch import nn
 
-import tensorflow as tf
 import torch.distributed as dist
 import torch.nn.functional as F
 from torch.nn.parallel import data_parallel

@@ -9,7 +9,6 @@ import random
 import numpy as np
 from torch import nn
 
-import tensorflow as tf
 import torch.distributed as dist
 import torch.nn.functional as F
 from torch.nn.parallel import data_parallel
@@ -21,6 +20,7 @@ from ..util import (
 )
 from ..data import build_parallel, clean_number
 from ..data import build_treebank as build_dataloader
+from ..data import build_random_treebank
 from ..model import build_main_model
 from ..module import LARS, exclude_bias_or_norm, adjust_learning_rate
 
@@ -140,15 +140,19 @@ class Monitor(object):
             self.evalfile = f"{self.cfg.data.data_root}/{self.cfg.data.eval_name}"
             return
         dcfg = self.cfg.data
+        if not dcfg.rnd_length: # change the function
+            from ..data import build_treebank as build_dataloader
+        else:
+            from ..data import build_random_treebank as build_dataloader
         data_name = dcfg.eval_name if self.cfg.eval else dcfg.data_name
         self.dataloader = build_dataloader(dcfg, self.echo, data_name, train=True, key=None)
+        dataset = self.dataloader if not dcfg.rnd_length else self.dataloader.dataset
         nstep = len(self.dataloader) 
-        nsample = self.dataloader.sents.size(0)
-        max_len = self.dataloader.sents.size(1)
+        nsample = dataset.sents.size(0)
+        max_len = dataset.sents.size(1)
         if nstep < self.cfg.running.peep_rate:
             self.cfg.running.peep_rate = nstep 
         self.echo(f"Instantiate main dataloader from `{data_name}': total {nstep} ({nsample}-{self.cfg.running.peep_rate}) batches.")
-        dataset = self.dataloader if not dcfg.rnd_length else self.dataloader.dataset
         self.vocab = VocabContainer(dataset.idx2word, dataset.word2idx)
         self.gold_file = f"{dcfg.data_root}/{data_name}"
         # evaluation
@@ -157,12 +161,13 @@ class Monitor(object):
         do_eval = os.path.isdir(data_path) or os.path.isfile(f"{data_path}") or tf.io.gfile.exists(f"{data_path}")
         self.evalloader = build_dataloader(dcfg, self.echo, eval_name, train=False, key=None) if do_eval else None
         if self.evalloader is not None:
-            nsample = self.evalloader.sents.size(0)
-            max_len = max(self.evalloader.sents.size(1), max_len) 
+            dataset = self.evalloader if not dcfg.rnd_length else self.evalloader.dataset
+            nsample = dataset.sents.size(0)
+            max_len = max(dataset.sents.size(1), max_len)
             self.echo(f"Will do evaluation every {self.cfg.running.save_rate} steps on {len(self.evalloader)} ({nsample}) batches.")
             self.gold_file = f"{dcfg.data_root}/{eval_name}"
-            self.evalloader.sync_vocab(self.dataloader)
-        self.echo(f"Vocab size: {self.dataloader.vocab_size}, max sentence length: {max_len}")
+            dataset.sync_vocab(self.dataloader if not dcfg.rnd_length else self.dataloader.dataset)
+        self.echo(f"Vocab size: {dataset.vocab_size}, max sentence length: {max_len}")
         # paired data
         pair_file = f"{dcfg.pair_root}/{dcfg.pair_name}"
         npz_file = f"{dcfg.pair_root}/{dcfg.npz_pair_name}.npz"
@@ -248,10 +253,34 @@ class Monitor(object):
             self.epoch(iepoch)
 
     def make_batch(self, batch):
+        def show_batch(batch, vocab, tokenizer):
+            tags, sentences, length, batch_size, _, gold_spans, gold_btrees, other_data = batch
+            sub_words, token_indice = other_data[1:] if isinstance(other_data[-1], torch.Tensor) else (None, None)
+            other_data = other_data[0] # this returns `other_data` for the first sample, we do not need `other_data` though
+            lengths = torch.tensor([length] * batch_size, device=self.device).long() if isinstance(length, int) else length
+
+            sentences = [
+                " ".join([vocab(wid) for i, wid in enumerate(sentence) if i < l])
+                for l, sentence in zip(lengths.tolist(), sentences.tolist())
+            ]
+            self.echo("\n" + "\n".join(sentences))
+            if tokenizer is not None:
+                sub_lengths = (sub_words != tokenizer.pad_token_id).sum(-1)
+                sub_words = [
+                    " ".join(tokenizer.convert_ids_to_tokens(sentence)[:l])
+                    for l, sentence in zip(sub_lengths.tolist(), sub_words.tolist())
+                ]
+                self.echo("\n" + "\n".join(sub_words))
+            ## end of show_batch()
+
+        #vocab, tokenizer = self.vocab, self.model.tokenizer()
+        #show_batch(batch, vocab, tokenizer)
+        #import sys; sys.exit(0)
+
         tags, sentences, length, batch_size, _, gold_spans, gold_btrees, other_data = batch
-        sub_words, token_indice = other_data[1:] if isinstance(other_data, tuple) else (None, None) 
-        other_data = other_data[0]
-        
+        sub_words, token_indice = other_data[1:] if isinstance(other_data[-1], torch.Tensor) else (None, None)
+        other_data = other_data[0] # this returns `other_data` for the first sample, we do not need `other_data` though
+
         tags = None if tags is None else tags.to(device=self.device)
         sentences = sentences.to(device=self.device)
 
@@ -398,14 +427,20 @@ class Monitor(object):
             self.timeit(all_time, key="report")
             return ppl_criteria
 
-        # iterate over batches
-        for epoch_step, ibatch in enumerate(np.random.permutation(len(self.dataloader))):
-            if epoch_step < 9980:
-                pass #continue
-            batch_data = self.dataloader[ibatch]
-            ppl_criteria = do_batch(batch_data, epoch_step + 1)
-            if epoch_step > 100:
-                pass #break
+        if self.cfg.data.rnd_length:
+            for epoch_step, batch_data in enumerate(self.dataloader):
+                if epoch_step < 9544:
+                    pass #continue
+                ppl_criteria = do_batch(batch_data, epoch_step + 1)
+        else:
+            # iterate over batches
+            for epoch_step, ibatch in enumerate(np.random.permutation(len(self.dataloader))):
+                if epoch_step < 9980:
+                    pass #continue
+                batch_data = self.dataloader[ibatch]
+                ppl_criteria = do_batch(batch_data, epoch_step + 1)
+                if epoch_step > 100:
+                    pass #break
 
         if not self.cfg.optimizer.use_lars and not self.cfg.optimizer.batch_sch and \
             self.scheduler is not None:
