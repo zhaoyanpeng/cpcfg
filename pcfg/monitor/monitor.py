@@ -55,6 +55,7 @@ class Monitor(object):
         seed_all_rng(rnd) #cfg.seed + rnd) # + rank)
         self.echo(f"Reinitialize everything (model & optimizer) except dataloader: {self.total_init}-th try w/ seed {rnd}.") #cfg.seed + rnd}.")
         #self.build_data()
+        #self.recover_data() # TODO may enable
         model = build_main_model(cfg, echo)
         tunable_params = model.build(**{"vocab": self.vocab, "num_tag": self.num_tag})
         #self.amend_data(model)
@@ -63,6 +64,9 @@ class Monitor(object):
         ) if torch.distributed.is_initialized() else model 
         self.model.train(not cfg.eval)
         self.build_optimizer(tunable_params, verbose=False)
+
+    def recover_data(self):
+        pass
 
     def encode_pairs(self):
         def make_batch(batch):

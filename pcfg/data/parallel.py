@@ -63,6 +63,7 @@ class ParallelDataset(data.Dataset):
                 assert zh.shape[0] == iline + 1 or len(self.embs) == nsample, \
                     f"doesn't look like aligned embed: |zh| != |samples| (|{zh.shape[0]}| != |{iline + 1}|) "
         self.length = len(self.captions)
+        self.indice = list(range(self.length))
 
     def _shuffle(self):
         indice = torch.randperm(self.length).tolist() 
@@ -75,6 +76,19 @@ class ParallelDataset(data.Dataset):
             mul_captions.append(self.mul_captions[k])
         self.embs, self.captions, self.mul_indexes, self.mul_captions = \
             embs, captions, mul_indexes, mul_captions
+        self.indice = [self.indice[k] for k in indice]
+
+    def _recover(self):
+        indice = np.argsort(self.indice)
+        embs, captions, mul_indexes, mul_captions = list(), list(), list(), list()
+        for k in indice:
+            embs.append(self.embs[k])
+            captions.append(self.captions[k])
+            mul_indexes.append(self.mul_indexes[k])
+            mul_captions.append(self.mul_captions[k])
+        self.embs, self.captions, self.mul_indexes, self.mul_captions = \
+            embs, captions, mul_indexes, mul_captions
+        self.indice = [self.indice[k] for k in indice]
 
     def __getitem__(self, index):
         def data(col, vocab, tokenizer):

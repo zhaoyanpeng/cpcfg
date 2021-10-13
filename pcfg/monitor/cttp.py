@@ -32,6 +32,11 @@ class Monitor(Monitor):
         )
         self.echo(f"The cross iterator has been reset {self.iter_count}.")
 
+    def recover_data(self):
+        for loader in [self.dataloader, self.evalloader, self.pairloader]:
+            dataloader = loader.dataset if isinstance(loader, torch.utils.data.DataLoader) else loader
+            getattr(dataloader, "_recover", lambda: None)()
+
     def search_initialization(self):
         self.echo("Training w/ initialization search started...")
         self.total_init = 0
@@ -227,6 +232,21 @@ class Monitor(Monitor):
                 argmax_spans, argmax_btrees, gold_spans, gold_btrees
             )
 
+    def show_batch(self, batch, vocab, tokenizer):
+        sentences, lengths, sub_words, token_indice = batch[:4]
+        sentences = [
+            " ".join([vocab(wid) for i, wid in enumerate(sentence) if i < l])
+            for l, sentence in zip(lengths.tolist(), sentences.tolist())
+        ]
+        self.echo("\n" + "\n".join(sentences))
+        if tokenizer is not None:
+            sub_lengths = (sub_words != tokenizer.pad_token_id).sum(-1)
+            sub_words = [
+                " ".join(tokenizer.convert_ids_to_tokens(sentence)[:l])
+                for l, sentence in zip(sub_lengths.tolist(), sub_words.tolist())
+            ]
+            self.echo("\n" + "\n".join(sub_words))
+
     def epoch(self, iepoch):
         self.model.reset_main()
         ppl_criteria = -1
@@ -244,12 +264,14 @@ class Monitor(Monitor):
             batch_x = (batch[1 - main_col][5]).to(device=self.device) # (bsize, dim)
             batch_y = make_batch(batch[main_col]) # sentences, lengths, sub_words, token_indice
             sentences, lengths, sub_words, token_indice = batch_y[:4]
-            
+
             max_length = lengths.max()
             if max_length > self.max_length or max_length == 1:
                 if epoch_step == len(self.pairloader): # special case 
                     ppl_criteria = self.post_step(iepoch, epoch_step, True, False, -1, None)
                 continue # length < 40 or length filter based on curriculum
+
+            #self.show_batch(batch_y, self.vocab, self.model.tokenizer())
 
             self.optim_step += 1 
             bsize = sentences.shape[0]
