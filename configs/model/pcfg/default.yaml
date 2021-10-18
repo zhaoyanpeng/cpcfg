@@ -2,6 +2,7 @@ name: 'NaivePCFG'
 ##  base model 
 num_tag: 60 #num of preterminal states
 num_state: 30 #num of nonterminal states
+r_dim: 32 #rank of binary rule prob. tensor
 z_dim: 64 #VAE z dimension
 s_dim: 256 #symbol embedding dimension
 h_dim: 512 #hidden dim for variational LSTM

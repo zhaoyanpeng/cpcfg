@@ -15,23 +15,40 @@ from omegaconf.listconfig import ListConfig
 from .base import PCFG, ResLayer
 from ..module import PretrainedEncoder, PartiallyFixedEmbedding
 
-class NaivePCFG(PCFG):
+class TDPCFG(PCFG):
     def __init__(self, cfg, NT=0, T=0, vocab=None, **kwargs): 
-        super(NaivePCFG, self).__init__(cfg, NT=NT, T=T, vocab=vocab, **kwargs)
+        super(TDPCFG, self).__init__(cfg, NT=NT, T=T, vocab=vocab, **kwargs)
         self.cfg = cfg
         h_dim = cfg.h_dim
         w_dim = cfg.w_dim
         z_dim = cfg.z_dim
         s_dim = cfg.s_dim
+        r_dim = cfg.r_dim
 
-        assert z_dim >= 0
+        assert cfg.z_dim >= 0 and cfg.r_dim >= 0
+
+        self.r_dim = cfg.r_dim
 
         self.term_emb = nn.Parameter(torch.randn(T, s_dim))
-        self.nonterm_emb = nn.Parameter(torch.randn(NT, s_dim))
+        self.nonterm_emb = nn.Parameter(torch.randn(self.NT_T, s_dim))
         self.root_emb = nn.Parameter(torch.randn(1, s_dim))
 
         rule_dim = s_dim if cfg.share_rule else s_dim + z_dim
-        self.rule_mlp = nn.Linear(rule_dim, self.NT_T ** 2)
+        self.rule_p_mlp = nn.Sequential(
+            nn.Linear(rule_dim, rule_dim),
+            nn.ReLU(),
+            nn.Linear(rule_dim, r_dim),
+        )
+        self.rule_l_mlp = nn.Sequential(
+            nn.Linear(rule_dim, rule_dim),
+            nn.ReLU(),
+            nn.Linear(rule_dim, r_dim),
+        )
+        self.rule_r_mlp = nn.Sequential(
+            nn.Linear(rule_dim, rule_dim),
+            nn.ReLU(),
+            nn.Linear(rule_dim, r_dim),
+        )
         root_dim = s_dim if cfg.share_root else s_dim + z_dim
         root_modules = ( 
             nn.Linear(root_dim, s_dim),
@@ -89,6 +106,7 @@ class NaivePCFG(PCFG):
             if not pcfg and self.z_dim > 0 and not self.cfg.share_root:
                 root_emb = torch.cat([root_emb, self.z], -1)
                 mlp = self.root_mlp
+            mlp = self.root_mlp
             root_prob = F.log_softmax(mlp(root_emb), -1)
             return root_prob
         
@@ -104,6 +122,7 @@ class NaivePCFG(PCFG):
                 z_expand = z_expand.unsqueeze(2).expand(b, n, self.T, self.z_dim)
                 term_emb = torch.cat([term_emb, z_expand], -1)
                 mlp = self.term_mlp
+            mlp = self.term_mlp
             term_prob = F.log_softmax(mlp(term_emb), -1)
             indices = x.unsqueeze(2).expand(b, n, self.T).unsqueeze(3)
             term_prob = torch.gather(term_prob, 3, indices).squeeze(3)
@@ -111,20 +130,23 @@ class NaivePCFG(PCFG):
 
         def rules(pcfg=False):
             nonterm_emb = self.nonterm_emb.unsqueeze(0).expand(
-                b, self.NT, self.s_dim
+                b, self.NT_T, self.s_dim
             )
             if not pcfg and self.z_dim > 0 and not self.cfg.share_rule:
                 z_expand = self.z.unsqueeze(1).expand(
-                    b, self.NT, self.z_dim
+                    b, self.NT_T, self.z_dim
                 )
                 nonterm_emb = torch.cat([nonterm_emb, z_expand], -1)
-                mlp = self.rule_mlp
-            rule_prob = F.log_softmax(mlp(nonterm_emb), -1)
-            rule_prob = rule_prob.view(b, self.NT, self.NT_T, self.NT_T)
-            return rule_prob
+                #mlp = self.rule_mlp
+                raise ValueError(f"`z_dim` > 0 is not supported.")
+            mixterm_emb = nonterm_emb
+            nonterm_emb = nonterm_emb[:, :self.NT]
+            p_prob = self.rule_p_mlp(nonterm_emb).log_softmax(-1)
+            l_prob = self.rule_l_mlp(mixterm_emb).log_softmax(-2)
+            r_prob = self.rule_r_mlp(mixterm_emb).log_softmax(-2) 
+            return p_prob, l_prob, r_prob
 
         roots_ll, terms_ll, rules_ll = roots(), terms(), rules()
         
         extra = tuple()
-        return (terms_ll, rules_ll, roots_ll), kl, extra 
-
+        return (terms_ll, rules_ll, roots_ll), kl, extra

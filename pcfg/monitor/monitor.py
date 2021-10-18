@@ -425,7 +425,8 @@ class Monitor(object):
 
             ppl_criteria = self.post_step(
                 iepoch, epoch_step, force_eval, warmup, nchunk, 
-                sentences, argmax_spans, argmax_btrees, gold_spans, gold_btrees
+                None if argmax_spans is None else sentences,
+                argmax_spans, argmax_btrees, gold_spans, gold_btrees
             )
 
             self.timeit(all_time, key="report")

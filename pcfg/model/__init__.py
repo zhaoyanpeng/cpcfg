@@ -1,6 +1,7 @@
 from .helper import *
 from .pcfg import XPCFG
 from .cttp import CTTP
+from .tdpcfg import TDPCFG
 
 from fvcore.common.registry import Registry
 
@@ -14,3 +15,4 @@ def build_main_model(cfg, echo):
 
 PARSER_MODELS_REGISTRY.register(XPCFG)
 PARSER_MODELS_REGISTRY.register(CTTP)
+PARSER_MODELS_REGISTRY.register(TDPCFG)

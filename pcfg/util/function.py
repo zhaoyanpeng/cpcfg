@@ -39,6 +39,23 @@ def numel(model: torch.nn.Module, trainable: bool = False):
 def detect_nan(x):
     return torch.isnan(x).any(), torch.isinf(x).any()
 
+def postprocess_parses(spans, lengths):
+    argmax_spans = list()
+    argmax_trees = list()
+    for i, span_list in enumerate(spans):
+        span_list = [(l, r - 1, 0) for l, r in span_list]
+        span_list.sort(key=lambda x: x[1] - x[0])
+        argmax_spans.append(span_list)
+
+        tree = {i: str(i) for i in range(lengths[i])}
+        for l, r, _ in span_list:
+            if l == r:
+                continue
+            span = '({} {})'.format(tree[l], tree[r])
+            tree[r] = tree[l] = span
+        argmax_trees.append(tree[0])
+    return argmax_spans, argmax_trees
+
 def extract_parse(span, length, inc=1):
     tree = [(i, str(i)) for i in range(length)]
     tree = dict(tree)
