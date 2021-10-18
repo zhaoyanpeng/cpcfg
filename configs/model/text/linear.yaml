@@ -1,0 +1,8 @@
+name: LinearHead
+layer_norm: False 
+input_dim: ${model.pcfg.num_state}
+embed_dim: 512
+layers: [256]
+ibias: False 
+bias: False
+share_emb: False # should be moved to other modules as `LinearHead` does not need this parameter

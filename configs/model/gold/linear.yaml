@@ -1,5 +1,7 @@
 name: LinearHead
+layer_norm: True
 input_dim: 768
 embed_dim: ${model.text.embed_dim} 
 layers: []
+ibias: True
 bias: False

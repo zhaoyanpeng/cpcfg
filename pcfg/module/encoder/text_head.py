@@ -28,11 +28,15 @@ class LinearHead(nn.Module):
         for i in range(len(sizes) - 2):
             layers.extend([
                 LayerNorm(sizes[i]),
-                nn.Linear(sizes[i], sizes[i + 1]),
+                nn.Linear(sizes[i], sizes[i + 1], bias=cfg.ibias),
+            ] if cfg.layer_norm else [
+                nn.Linear(sizes[i], sizes[i + 1], bias=cfg.ibias),
             ])
         layers.extend([
             LayerNorm(sizes[-2]),
-            nn.Linear(sizes[-2], sizes[-1], bias=cfg.bias)
+            nn.Linear(sizes[-2], sizes[-1], bias=cfg.bias),
+        ] if cfg.layer_norm else [
+            nn.Linear(sizes[-2], sizes[-1], bias=cfg.bias),
         ])
         self.encoder = nn.Sequential(*layers)
         self._output_dim = cfg.embed_dim

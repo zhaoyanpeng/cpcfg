@@ -319,7 +319,7 @@ class Monitor(object):
         self, iepoch, epoch_step, force_eval, warmup, nchunk, sentences, 
         argmax_spans=None, argmax_btrees=None, gold_spans=None, gold_btrees=None,
     ):
-        if sentences is not None:
+        if argmax_btrees is not None:
             for b in range(len(gold_spans)):
                 span_b = [(a[0], a[1]) for a in argmax_spans[b] if a[0] != a[1]] #ignore labels 
                 span_b_set = set(span_b[:-1]) # skip sentence-level constituent
@@ -330,7 +330,7 @@ class Monitor(object):
             msg = self.model.stats(self.num_sents, self.num_words)
             self.echo(f"{msg} F1: {get_f1s(self.all_stats)[0]:.2f}")
             # example parse
-            if sentences is not None:
+            if argmax_btrees is not None:
                 sentence = [self.vocab(word_idx) for word_idx in sentences[0].tolist()]
                 pred_tree = get_tree(get_actions(argmax_btrees[0]), sentence)
                 gold_tree = get_tree(gold_btrees[0], sentence)
@@ -425,8 +425,7 @@ class Monitor(object):
 
             ppl_criteria = self.post_step(
                 iepoch, epoch_step, force_eval, warmup, nchunk, 
-                None if argmax_spans is None else sentences,
-                argmax_spans, argmax_btrees, gold_spans, gold_btrees
+                sentences, argmax_spans, argmax_btrees, gold_spans, gold_btrees
             )
 
             self.timeit(all_time, key="report")

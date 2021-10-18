@@ -11,7 +11,7 @@ from ..util import postprocess_parses, extract_parses, Stats
 from ..pcfg import build_pcfg_head
 from ..pcfg.algo import TDSeqCFG
 from ..module import PretrainedEncoder, PartiallyFixedEmbedding
-from . import XPCFG, load_checkpoint
+from . import XPCFG
 
 class TDPCFG(XPCFG):
     def __init__(self, cfg, echo):
@@ -24,7 +24,7 @@ class TDPCFG(XPCFG):
             sentences, lengths, token_indice=token_indice, sub_words=sub_words
         )
         dist = TDSeqCFG()
-        ll, argmax_spans = dist.partition(params, lengths, mbr=(not self.training))
+        ll, argmax_spans = dist.partition(params, lengths, mbr=(not self.training)) #True) #
         argmax_spans, argmax_trees = ((None,) * 2 if argmax_spans is None else 
             postprocess_parses(argmax_spans, lengths.tolist())
         )

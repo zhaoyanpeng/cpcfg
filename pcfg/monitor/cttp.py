@@ -124,12 +124,13 @@ class Monitor(Monitor):
     def post_step(
         self, iepoch, epoch_step, force_eval, warmup, nchunk, sentences, argmax_btrees=None
     ):
-        if argmax_btrees is not None and (self.cfg.rank == 0 and epoch_step % self.cfg.running.peep_rate == 0):
+        if (self.cfg.rank == 0 and epoch_step % self.cfg.running.peep_rate == 0):
             self.echo(self.model.stats_main(self.num_sents, self.num_words))
             # example parse
-            sentence = [self.vocab(word_idx) for word_idx in sentences[0].tolist()]
-            pred_tree = get_tree(get_actions(argmax_btrees[0]), sentence)
-            self.echo(f"\nPred Tree: {pred_tree}")
+            if argmax_btrees is not None:
+                sentence = [self.vocab(word_idx) for word_idx in sentences[0].tolist()]
+                pred_tree = get_tree(get_actions(argmax_btrees[0]), sentence)
+                self.echo(f"\nPred Tree: {pred_tree}")
             # overall stats 
             lr_w = self.optimizer.param_groups[0]['lr']
             lr_b = self.optimizer.param_groups[1]['lr']
@@ -184,20 +185,22 @@ class Monitor(Monitor):
         self, iepoch, epoch_step, force_eval, sub_step, sentences, 
         argmax_spans, argmax_btrees, gold_spans, gold_btrees
     ):
-        for b in range(len(gold_spans)):
-            span_b = [(a[0], a[1]) for a in argmax_spans[b] if a[0] != a[1]] #ignore labels 
-            span_b_set = set(span_b[:-1]) # skip sentence-level constituent
-            span_g_set = set([tuple(span) for span in gold_spans[b][:-1]]) # hashable tuple
-            update_stats(span_b_set, [span_g_set], self.all_stats)
+        if argmax_btrees is not None:
+            for b in range(len(gold_spans)):
+                span_b = [(a[0], a[1]) for a in argmax_spans[b] if a[0] != a[1]] #ignore labels
+                span_b_set = set(span_b[:-1]) # skip sentence-level constituent
+                span_g_set = set([tuple(span) for span in gold_spans[b][:-1]]) # hashable tuple
+                update_stats(span_b_set, [span_g_set], self.all_stats)
 
         if force_eval and (self.cfg.rank == 0 and epoch_step % self.cfg.running.peep_rate == 0):
             msg = self.model.stats(self.num_sents, self.num_words)
             self.echo(f"sub-step {self.optim_step}-{sub_step} {msg} F1: {get_f1s(self.all_stats)[0]:.2f}")
             # example parse
-            sentence = [self.vocab(word_idx) for word_idx in sentences[0].tolist()]
-            pred_tree = get_tree(get_actions(argmax_btrees[0]), sentence)
-            gold_tree = get_tree(gold_btrees[0], sentence)
-            self.echo(f"\nPred Tree: {pred_tree}\nGold Tree: {gold_tree}")
+            if argmax_btrees is not None:
+                sentence = [self.vocab(word_idx) for word_idx in sentences[0].tolist()]
+                pred_tree = get_tree(get_actions(argmax_btrees[0]), sentence)
+                gold_tree = get_tree(gold_btrees[0], sentence)
+                self.echo(f"\nPred Tree: {pred_tree}\nGold Tree: {gold_tree}")
         # per cross post step
         self.model.zero_grad()
     

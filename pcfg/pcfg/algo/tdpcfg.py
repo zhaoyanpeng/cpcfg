@@ -39,7 +39,10 @@ class TDSeqCFG(SentenceCFG):
         beta = torch.zeros(b, N, N, NT, device=device).fill_(-MAXVAL)
         l_beta = torch.zeros(b, N, N, r, device=device).fill_(-MAXVAL) 
         r_beta = torch.zeros(b, N, N, r, device=device).fill_(-MAXVAL) 
-        spans = torch.zeros(b, N, N, device=device).requires_grad_(mbr)
+        ntype = NT if require_marginal else 1 # mem
+        typed_spans = torch.zeros(
+            b, N, N, ntype, device=device
+        ).requires_grad_(mbr or require_marginal)
 
         striped_copy_(l_beta, l_term, 1)
         striped_copy_(r_beta, r_term, 1)
@@ -49,7 +52,7 @@ class TDSeqCFG(SentenceCFG):
             Y = stripe(l_beta, N - w, w - 1, (0, 1), 1)
             Z = stripe(r_beta, N - w, w - 1, (1, w), 0)
             X = merge_children(Y.clone(), Z.clone()) # (b, kw, NT)
-            X = X + spans[:, indice, indice + w].unsqueeze(-1)
+            X = X + typed_spans[:, indice, indice + w]
             striped_copy_(beta, X, w)
             if w + 1 < N: # cache
                 l_X = transform_rank(X, l_nonterm)
@@ -61,10 +64,10 @@ class TDSeqCFG(SentenceCFG):
         ll = final.logsumexp(-1)
         
         argmax = (None if not mbr else 
-            self._extract_parses(ll, spans, lengths, mbr=mbr)
+            self._extract_parses(ll, typed_spans, lengths, mbr=mbr)
         )
         if not require_marginal:
             return ll, argmax
 
-        marginal = self._compute_marginal(ll, beta, lengths)
+        marginal = self._compute_marginal(ll, typed_spans, lengths)
         return ll, argmax, marginal

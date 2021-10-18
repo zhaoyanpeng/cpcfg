@@ -8,8 +8,8 @@ class SentenceCFG:
     def __init__(self):
         pass
 
-    def partition(self, params, lengths, *args, cky=False, mbr=False, **kwargs):
-        return self._dp(params, lengths, cky=cky, mbr=mbr)
+    def partition(self, params, lengths, *args, cky=False, mbr=False, require_marginal=False, **kwargs):
+        return self._dp(params, lengths, cky=cky, mbr=mbr, require_marginal=require_marginal)
 
     @torch.enable_grad()
     def argmax(self, params, lengths, *args, cky=False, mbr=False, **kwargs):
@@ -19,15 +19,33 @@ class SentenceCFG:
     def _dp(self, params, lengths, *args, cky=False, mbr=False, **kwargs):
         pass 
 
+    def _compute_marginal(self, ll, spans, lengths):
+        # span marginals by type
+        marginals = torch.autograd.grad(
+            ll.sum(), spans, create_graph=True, only_inputs=True, allow_unused=False
+        )[0]
+        # linearization
+        beg = 0
+        b, N, _, NT = marginals.shape # (b, N, N, NT)
+        scores = torch.zeros(b, int((N - 2) * (N - 1) / 2), NT, device=marginals.device)
+        for w in range(2, N):
+            w_spans = striped_copy(marginals, w)
+            kw = w_spans.shape[1] # (b, kw, NT)
+            scores[:, beg : beg + kw] = w_spans
+            beg = beg + kw
+        return scores # marginals #
+
     def _extract_parses(self, ll, spans, lengths, mbr=False):
         b, N = spans.shape[:2] # (b, N, N)
         if N < 3: # trivial spans for len = 2
             return [[[0, 1], [1, 2], [0, 2]] for _ in range(b)]
-        #ll.sum().backward(retain_graph=True) # gradients will be accumulated
+        #ll.sum().backward(retain_graph=True) # gradients would be accumulated
         #marginals = spans.grad
         marginals = torch.autograd.grad(
             ll.sum(), spans, create_graph=True, only_inputs=True, allow_unused=False
         )[0]
+        if spans.dim() == 4: # unlabeled
+            marginals = marginals.sum(-1)
         if mbr: # 
             return self._mbr(marginals.detach(), lengths)
         parses = [[] for _ in range(b)]
