@@ -20,9 +20,29 @@ def build_text_head(cfg, **kwargs):
     return TEXT_HEADS_REGISTRY.get(cfg.name)(cfg, **kwargs)
 
 @TEXT_HEADS_REGISTRY.register()
+class DummyHead(torch.nn.Module):
+    def __init__(self, cfg, **kwargs):
+        super().__init__()
+        self.num_state = -1
+        pass
+    def from_pretrained(self, state_dict, cfg, *args, **kwargs):
+        pass
+    def copy_state_dict(self, state_dict):
+        return {}, {}
+    def replace_modules(self, **kwargs):
+        return []
+    def forward(self, x, *args, **kwargs):
+        z = x # do nothing
+        if kwargs.get("normalized", False):
+            z = F.normalize(z, dim=-1) #z / z.norm(dim=-1, keepdim=True)
+            #print(f"{threading.current_thread().ident} linear --{kwargs.get('normalized', False)}")
+        return z
+
+@TEXT_HEADS_REGISTRY.register()
 class LinearHead(nn.Module):
     def __init__(self, cfg, **kwargs):
         super().__init__()
+        self.num_state = -1
         layers = list()
         sizes = [cfg.input_dim] + list(cfg.layers) + [cfg.embed_dim]
         for i in range(len(sizes) - 2):

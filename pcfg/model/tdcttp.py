@@ -34,7 +34,8 @@ class TDCTTP(CTTP):
                 params, lengths, mbr=(not self.training), require_marginal=True
             )
             nll = -ll
-            cst_loss = self.forward_contrast(
+            forward_contrast = self.forward_unlabeled_contrast if self.text_head.num_state == 1 else self.forward_contrast
+            cst_loss = forward_contrast(
                 sentences, lengths, span_margs, gold_embs, token_indice=token_indice, sub_words=sub_words
             )
 
@@ -49,11 +50,19 @@ class TDCTTP(CTTP):
             nll=nll.detach().sum().item(), kl=kl.detach().sum().item(), cst=cst_loss.detach().sum().item()
         )
         loss = (nll + kl + cst_loss).mean()
+        #loss = (nll + kl).mean()
+        #loss = (cst_loss).mean()
         return loss, (argmax_spans, argmax_trees)
 
     def forward_contrast(self, sentences, lengths, span_margs, gold_embs, token_indice=None, sub_words=None):
         gold_embs = self.gold_head(gold_embs, normalized=True) 
-        normalized_margs = span_margs.softmax(-1) # to average syntactic-type embeddings
+        softmax = True
+        if softmax:
+            normalized_margs = span_margs.softmax(-1) # to average syntactic-type embeddings
+        else:
+            assert torch.all(span_margs >= 0), f"oops! there are negative marginals."
+            normalizer = span_margs.sum(-1, keepdim=True)
+            normalized_margs = span_margs / normalizer.masked_fill(normalizer == 0, 1.)
         span_embs = self.text_head(normalized_margs, normalized=True)
         fn = self.contrastive_loss if self.training else self.retrieval_eval
         return fn(gold_embs, span_embs, span_margs, lengths) 
@@ -73,7 +82,7 @@ class TDCTTP(CTTP):
             loss = self.loss_head(embs, span_vect, normalized=True)
             matching_loss_matrix[:, k] = loss
         span_margs = span_margs.sum(-1) # marginalize over syntactic types
-        expected_loss = span_margs[:, : nstep] * matching_loss_matrix 
+        expected_loss = span_margs[:, : nstep] * matching_loss_matrix
         expected_loss = expected_loss.sum(-1)
         return expected_loss
 

@@ -39,7 +39,8 @@ class CTTP(nn.Module):
         else:
             ll, span_margs = dist.inside_im
             nll = -ll
-            cst_loss = self.forward_contrast(
+            forward_contrast = self.forward_unlabeled_contrast if self.text_head.num_state == 1 else self.forward_contrast
+            cst_loss = forward_contrast(
                 sentences, lengths, span_margs, gold_embs, token_indice=token_indice, sub_words=sub_words
             )
 
@@ -50,6 +51,8 @@ class CTTP(nn.Module):
             nll=nll.detach().sum().item(), kl=kl.detach().sum().item(), cst=cst_loss.detach().sum().item()
         )
         loss = (nll + kl + cst_loss).mean()
+        #loss = (nll + kl).mean()
+        #loss = (cst_loss).mean()
         return loss, (argmax_spans, argmax_trees)
     
     def forward_contrast(self, sentences, lengths, span_margs, gold_embs, token_indice=None, sub_words=None):
@@ -96,8 +99,54 @@ class CTTP(nn.Module):
         #loss = loss or torch.tensor([]) # could be none
         return loss
 
+    def forward_unlabeled_contrast(self, sentences, lengths, span_margs, gold_embs, token_indice=None, sub_words=None):
+        gold_embs = self.gold_head(gold_embs, normalized=True)
+        span_embs = self.text_head(
+            sentences, lengths, token_indice=token_indice, sub_words=sub_words, normalized=False
+        )
+        span_embs = span_embs.squeeze(-2) # label dim
+        fn = self.unlabeled_contrastive_loss if self.training else self.unlabeled_retrieval_eval
+        return fn(gold_embs, span_embs, span_margs, lengths)
+
+    def unlabeled_contrastive_loss(self, embs, span_embs, span_margs, lengths):
+        B = embs.shape[0]
+        N = lengths.max()
+        nstep = int(N * (N - 1) / 2)
+        mstep = (lengths * (lengths - 1) / 2).int()
+        # focus on only short spans
+        nstep = int(mstep.float().mean().item() / 2)
+        matching_loss_matrix = torch.zeros(
+            B, nstep, device=embs.device
+        )
+        for k in range(nstep):
+            span_vect = span_embs[:, k]
+            #span_marg = span_margs[:, k].softmax(-1).unsqueeze(-2)
+            #span_vect = torch.matmul(span_marg, span_vect).squeeze(-2)
+            span_vect = F.normalize(span_vect)
+            loss = self.loss_head(embs, span_vect, normalized=True)
+            matching_loss_matrix[:, k] = loss
+        span_margs = span_margs.sum(-1)
+        expected_loss = span_margs[:, : nstep] * matching_loss_matrix
+        expected_loss = expected_loss.sum(-1)
+        return expected_loss
+
+    def unlabeled_retrieval_eval(self, embs, span_embs, span_margs, lengths):
+        mstep = (lengths * (lengths - 1) / 2).int() # (b, NT, dim)
+        span_vect = torch.stack(
+            [span_embs[b][k - 1] for b, k in enumerate(mstep)], dim=0
+        )
+        #span_marg = torch.softmax(torch.stack(
+        #    [span_margs[b][k - 1] for b, k in enumerate(mstep)], dim=0
+        #), -1).unsqueeze(-2)
+        #span_vect = torch.bmm(span_marg, span_vect).squeeze(-2)
+        span_vect = F.normalize(span_vect)
+        loss = self.loss_head(embs, span_vect, normalized=True)
+        #loss = loss or torch.tensor([]) # could be none
+        return loss
+
     def stats_main(self, num_sents, num_words): 
         meter = self.meter_main.stats if self.training else self.meter_eval.stats
+        num_sents, num_words = max(num_sents, 1), max(num_words, 1)
         ppl = np.exp(meter["nll"] / num_words)
         kl = meter["kl"] / num_sents
         bound = np.exp((meter["nll"] + meter["kl"]) / num_words)

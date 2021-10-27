@@ -18,6 +18,25 @@ from ..util import (
 )
 from . import Monitor
 
+def check_grad(model):
+    if hasattr(model.text_head, "encoder"):
+        text = model.text_head.encoder
+    elif hasattr(model.gold_head, "encoder"):
+        text = model.gold_head.encoder
+    print(text)
+    print(text[-1])
+    print(text[-1].weight.grad)
+
+    if hasattr(model.pcfg_head, "rule_p_mlp"):
+        pcfg = model.pcfg_head.rule_p_mlp #term_mlp #
+    elif hasattr(model.pcfg_head, "root_mlp"):
+        pcfg = model.pcfg_head.root_mlp #term_mlp #
+    print(pcfg)
+    print(pcfg[-1])
+    print(pcfg[-1].weight.grad)
+
+    import sys; sys.exit()
+
 class Monitor(Monitor):
     """ Contrastive Text-Text Parser.
     """
@@ -287,6 +306,7 @@ class Monitor(Monitor):
             )
 
             loss.backward()
+            #check_grad(self.model)
             if self.optim_step % self.cfg.running.optim_rate == 0: 
                 self.step()
 
@@ -314,6 +334,7 @@ class Monitor(Monitor):
         return ppl_criteria 
 
     def infer_main(self, dataloader, samples=float("inf"), iepoch=0):
+        if samples <= 0: return ""
         self.model.reset_main()
         num_sents = num_words = 0
         corpus_f1, sentence_f1 = [0., 0., 0.], [] 
