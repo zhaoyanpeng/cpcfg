@@ -1,4 +1,4 @@
-from .helper import LayerNorm, QuickGELU
+from .helper import LayerNorm, QuickGELU, layernorm_linear, linear_relu_linear
 from .bert import BertForMaskedLM
 from .embedder import PretrainedEncoder, PartiallyFixedEmbedding
 

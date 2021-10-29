@@ -1,9 +1,9 @@
-name: LinearHead
+name: PCFGFusionHead
 layer_norm: False 
-relu_layer: False
-input_dim: ${model.pcfg.num_state}
+relu_layer: True
+input_dim: ${model.pcfg.s_dim}
 embed_dim: 512
-layers: [256]
+layers: []
 ibias: False 
 bias: False
 share_emb: False # should be moved to other modules as `LinearHead` does not need this parameter

@@ -1,5 +1,6 @@
 name: LinearHead
 layer_norm: True
+relu_layer: False
 input_dim: 768
 embed_dim: ${model.text.embed_dim} 
 layers: []

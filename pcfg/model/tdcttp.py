@@ -63,7 +63,7 @@ class TDCTTP(CTTP):
             assert torch.all(span_margs >= 0), f"oops! there are negative marginals."
             normalizer = span_margs.sum(-1, keepdim=True)
             normalized_margs = span_margs / normalizer.masked_fill(normalizer == 0, 1.)
-        span_embs = self.text_head(normalized_margs, normalized=True)
+        span_embs = self.text_head(normalized_margs, normalized=True, pcfg_head=self.pcfg_head)
         fn = self.contrastive_loss if self.training else self.retrieval_eval
         return fn(gold_embs, span_embs, span_margs, lengths) 
 

@@ -9,7 +9,10 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
-from ...module import LayerNorm, PretrainedEncoder, PartiallyFixedEmbedding
+from ...module import (
+    LayerNorm, PretrainedEncoder, PartiallyFixedEmbedding,
+    layernorm_linear, linear_relu_linear
+)
 
 TEXT_HEADS_REGISTRY = Registry("TEXT_HEADS")
 TEXT_HEADS_REGISTRY.__doc__ = """
@@ -43,21 +46,10 @@ class LinearHead(nn.Module):
     def __init__(self, cfg, **kwargs):
         super().__init__()
         self.num_state = -1
-        layers = list()
         sizes = [cfg.input_dim] + list(cfg.layers) + [cfg.embed_dim]
-        for i in range(len(sizes) - 2):
-            layers.extend([
-                LayerNorm(sizes[i]),
-                nn.Linear(sizes[i], sizes[i + 1], bias=cfg.ibias),
-            ] if cfg.layer_norm else [
-                nn.Linear(sizes[i], sizes[i + 1], bias=cfg.ibias),
-            ])
-        layers.extend([
-            LayerNorm(sizes[-2]),
-            nn.Linear(sizes[-2], sizes[-1], bias=cfg.bias),
-        ] if cfg.layer_norm else [
-            nn.Linear(sizes[-2], sizes[-1], bias=cfg.bias),
-        ])
+        layers = layernorm_linear(
+            sizes, cfg.layer_norm, cfg.ibias, cfg.bias
+        )
         self.encoder = nn.Sequential(*layers)
         self._output_dim = cfg.embed_dim
         self._initialize()
@@ -77,6 +69,31 @@ class LinearHead(nn.Module):
             z = F.normalize(z, dim=-1) #z / z.norm(dim=-1, keepdim=True)
             #print(f"{threading.current_thread().ident} linear --{kwargs.get('normalized', False)}")
         return z 
+
+@TEXT_HEADS_REGISTRY.register()
+class PCFGFusionHead(LinearHead):
+    def __init__(self, cfg, **kwargs):
+        super().__init__(cfg, **kwargs)
+        sizes = [cfg.input_dim] + list(cfg.layers) + [cfg.embed_dim]
+        layers = linear_relu_linear(
+            sizes, cfg.layer_norm, cfg.ibias, cfg.bias
+        )
+        self.encoder = nn.Sequential(*layers)
+        self._initialize()
+
+    def forward(self, text, *args, **kwargs):
+        assert "pcfg_head" in kwargs, f"PCFG head is not found."
+        pcfg_head = kwargs["pcfg_head"]
+        nonterm_emb = pcfg_head.nonterm_emb
+        nonterm_emb = nonterm_emb[:pcfg_head.NT]
+
+        text = text @ nonterm_emb
+
+        z = self.encoder(text)
+        if kwargs.get("normalized", False):
+            z = F.normalize(z, dim=-1) #z / z.norm(dim=-1, keepdim=True)
+            #print(f"{threading.current_thread().ident} linear --{kwargs.get('normalized', False)}")
+        return z
 
 @TEXT_HEADS_REGISTRY.register()
 class SRNNTextEncoder(torch.nn.Module):
