@@ -104,7 +104,7 @@ class SRNNTextEncoder(torch.nn.Module):
         self.enc_rnn = torch.nn.LSTM(
             cfg.w_dim, cfg.h_dim, bidirectional=True, num_layers=1, batch_first=True
         )
-        self.enc_out = nn.Linear(cfg.h_dim * 2, cfg.embed_dim * self.num_state, bias=False)
+        self.enc_out = nn.Linear(cfg.h_dim * 2, cfg.embed_dim * self.num_state, bias=cfg.bias)
         self.enc_emb = nn.Embedding(len(vocab), cfg.w_dim)
         self._output_dim = cfg.embed_dim
         self._initialize()

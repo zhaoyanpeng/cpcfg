@@ -160,9 +160,9 @@ class CTTP(nn.Module):
         meter = self.meter_main if self.training else self.meter_eval
         meter.reset()
 
-    def report_main(self, gold_file=None):
-        if not dist.is_initialized() or dist.get_rank() == 0:
-            return self.loss_head.report(gold_file=gold_file)
+    def report_main(self, gold_file=None, **kwargs):
+        if (not dist.is_initialized() or dist.get_rank() == 0) and self.loss_head is not None:
+            return self.loss_head.report(gold_file=gold_file, **kwargs)
         else:
             return ""
 
@@ -231,6 +231,9 @@ class CTTP(nn.Module):
     def collect_state_dict(self):
         return (
             self.pcfg_head.state_dict(), 
+            self.gold_head.state_dict() if self.gold_head is not None else {},
+            self.text_head.state_dict() if self.text_head is not None else {},
+            self.loss_head.state_dict() if self.loss_head is not None else {},
         )
 
     def build(self, vocab=None, vocab_zh=None, num_tag=0, **kwargs):

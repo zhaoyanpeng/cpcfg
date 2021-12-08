@@ -86,7 +86,7 @@ class LossHead(nn.Module):
         msg_21 = LossHead.retrieval_metrics(ranks, msg="X->I")
         return f"{msg_12}\n{msg_21}"
 
-    def report(self, gold_file=None):
+    def report(self, gold_file=None, num_x2_per_x1=1, **kwargs):
         x1s = torch.cat(self.x1s)
         x2s = torch.cat(self.x2s)
 
@@ -111,7 +111,13 @@ class LossHead(nn.Module):
         t21_5 = torch.where(r21 < 5)[0].shape[0] / nsample * 100. 
 
         p_21 = f"X->I: t1 = {t21_1:2.2f} t5 = {t21_5:2.2f}" 
-        ref_metric = self.retrieval_eval(x1s, x2s, k=1)
+
+        # mscoco retrieval
+        indice = torch.arange(
+            0, x1s.shape[0], num_x2_per_x1, device=x1s.device
+        )
+        x1s = x1s[indice]
+        ref_metric = self.retrieval_eval(x1s, x2s, k=num_x2_per_x1)
 
         del self.x1s, self.x2s, self.ids
         ref = "" if ref_metric == "" else f"\nREFERENCE\n{ref_metric}"

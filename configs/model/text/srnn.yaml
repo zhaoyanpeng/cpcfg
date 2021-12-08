@@ -7,3 +7,4 @@ share_emb: False
 span_pooler: mean
 semantic_dim: 512
 syntatic_dim: 512
+bias: False

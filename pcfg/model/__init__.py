@@ -3,6 +3,7 @@ from .pcfg import XPCFG
 from .cttp import CTTP
 from .tdpcfg import TDPCFG
 from .tdcttp import TDCTTP
+from .vgpcfg import VGPCFG
 
 from fvcore.common.registry import Registry
 
@@ -18,3 +19,4 @@ PARSER_MODELS_REGISTRY.register(XPCFG)
 PARSER_MODELS_REGISTRY.register(CTTP)
 PARSER_MODELS_REGISTRY.register(TDPCFG)
 PARSER_MODELS_REGISTRY.register(TDCTTP)
+PARSER_MODELS_REGISTRY.register(VGPCFG)
