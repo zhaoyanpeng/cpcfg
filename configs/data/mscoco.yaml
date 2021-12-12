@@ -19,5 +19,6 @@ min_length: 2
 max_length: 40 
 rnd_length: False #batch of sentences of diff. lengths
 embed_dim: ${model.gold.input_dim} 
+vis_mode: True
 usez_tag: False 
 gold_tag: False 

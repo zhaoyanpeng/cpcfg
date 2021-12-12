@@ -12,6 +12,7 @@ from torch_struct import SentCFG
 from ..util import extract_parses, Stats
 from ..pcfg import build_pcfg_head
 from ..module import build_text_head, build_loss_head, PretrainedEncoder, PartiallyFixedEmbedding
+from . import load_checkpoint, load_pcfg_init
 
 class CTTP(nn.Module):
     def __init__(self, cfg, echo):
@@ -244,6 +245,11 @@ class CTTP(nn.Module):
             tunable_params = self.build_model(
                 vocab, vocab_zh=vocab_zh, num_tag=num_tag
             )
+            pcfg_head_sd = load_pcfg_init(self.cfg, self.echo)
+            if pcfg_head_sd is not None:
+                n_o, o_n = self.pcfg_head.from_pretrained(pcfg_head_sd, strict=True)
+                msg = f" except {n_o}" if len(n_o) > 0 else ""
+                self.echo(f"Initialize pcfg encoder from `pcfg_head`{msg}.")
         self.cuda(self.cfg.rank)
         return tunable_params
     

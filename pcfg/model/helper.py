@@ -3,7 +3,7 @@ import os, re
 import torch
 from collections import OrderedDict
 
-__all__ = ["load_checkpoint"]
+__all__ = ["load_checkpoint", "load_pcfg_init"]
 
 def load_checkpoint(cfg, echo):
     model_file = f"{cfg.model_root}/{cfg.model_name}/{cfg.model_file}"
@@ -25,3 +25,14 @@ def load_checkpoint(cfg, echo):
     else:
         raise ValueError(f"I don't know how to parse the checkpoint: # module is {nmodule}.")
 
+def load_pcfg_init(cfg, echo):
+    model_file = f"{cfg.model_root}/{cfg.model.pcfg.model_init}"
+    if not os.path.isfile(model_file):
+        return None
+    echo(f"Loading pcfg initialization from {model_file}")
+    checkpoint = torch.load(model_file, map_location="cpu")
+    if isinstance(checkpoint["model"], dict): # from emnlp init
+        pcfg_head_sd = checkpoint["model"]["parser"] # hard-coded
+    else:
+        pcfg_head_sd = checkpoint["model"][0]
+    return pcfg_head_sd

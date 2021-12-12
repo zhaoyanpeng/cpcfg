@@ -108,10 +108,11 @@ class MscocoDataset(torch.utils.data.Dataset):
         } 
 
 class MscocoCollator:
-    def __init__(self, device=torch.device("cpu")):
+    def __init__(self, device=torch.device("cpu"), tokenizer=None):
         # RuntimeError: cannot pin 'torch.cuda.FloatTensor' only dense CPU tensors can be pinned
         # when pin_memory is true, the collator has to return CPU tensors
         self.device = device
+        # TODO tokenizer
 
     def __call__(self, records):
         union = { 
@@ -124,7 +125,7 @@ class MscocoCollator:
         ).T
         mul_captions = np.array(
             list(itertools.zip_longest(*union["mul_caption"], fillvalue=0))
-        ).T
+        ).T # filled with self.tokenizer.pad_token_id
         mul_indexes = np.array(
             list(itertools.zip_longest(*union["mul_index"], fillvalue=0))
         ).T
@@ -141,7 +142,7 @@ class MscocoCollator:
 
 def build_mscoco(
     cfg, echo, data_name, vocab, tokenizer=None, train=False, 
-    npz_file=None, embed_dim=0, key=None, nsample=float("inf")
+    num_caption_per_image=5, npz_file=None, embed_dim=0, key=None, nsample=float("inf")
 ):
     if tokenizer is None: # default tokenizer
         def_tokenizer = BertTokenizer.from_pretrained('bert-base-multilingual-cased')
@@ -153,6 +154,7 @@ def build_mscoco(
         batch_size=cfg.batch_size,
         min_length=cfg.min_length, 
         max_length=(cfg.max_length + (0 if train else 10)),
+        num_caption_per_image=num_caption_per_image,
         npz_file=npz_file,
         embed_dim=cfg.embed_dim,
         nsample=nsample,

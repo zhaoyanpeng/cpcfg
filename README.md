@@ -1,6 +1,8 @@
-# A Fast and Modularized Implementation of C-PCFGs
+# Fast and Modularized Implementations of XCFGs
 
-**Update (03/10/2021):** This is a modularized implementation of C-PCFG. Check out this [branch](https://github.com/zhaoyanpeng/cpcfg/tree/messup) if you are looking for a lightweight implementation.
+**Update (12/12/2021):** Add an implementation of [VG-PCFG](https://github.com/zhaoyanpeng/vpcfg).
+
+**Update (03/10/2021):** Fast and modularized implementations of [XCFGs](https://github.com/zhaoyanpeng/xcfg).
 
 ## Model
 This implementation reaches an average sentence-level F1 **56%**, slightly higher than Yoon's **55.2%**. 

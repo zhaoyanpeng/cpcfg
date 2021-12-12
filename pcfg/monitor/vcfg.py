@@ -32,12 +32,16 @@ class Monitor(Monitor):
         self.vocab = Indexer(f"{dcfg.data_root}/{dcfg.main_vocab}")
         self.echo(f"Vocab size: {len(self.vocab)}.")
         # loader 
-        def build_loader(data_name, msg, train=False, eval=False, test=False, nsample=float("inf")):
+        def build_loader(
+            data_name, msg, train=False, eval=False, test=False,
+            num_caption_per_image=5, nsample=float("inf")
+        ):
             data_path = f"{dcfg.data_root}/{data_name}"
             npz_file = f"{dcfg.data_root}/{data_name.split('_', 1)[0]}_ims.npy"
             npz_file = npz_file if os.path.isfile(npz_file) and dcfg.embed_dim > 0 else None
             dataloader = build_dataloader(
-                dcfg, self.echo, data_name, self.vocab, train=train, nsample=nsample, npz_file=npz_file
+                dcfg, self.echo, data_name, self.vocab, train=train, nsample=nsample,
+                npz_file=npz_file, num_caption_per_image=num_caption_per_image,
             ) if os.path.isfile(f"{data_path}") else None
             if dataloader is None:
                 return None # break
@@ -55,15 +59,22 @@ class Monitor(Monitor):
             elif test:
                 self.gold_file_test = data_path  
             return dataloader 
+        num_caption_per_image = 5 if dcfg.vis_mode else 1
         # train (main loader)
         data_name = dcfg.eval_name if self.cfg.eval else dcfg.data_name
-        self.dataloader = build_loader(data_name, "main", train=True, nsample=dcfg.train_samples)
+        self.dataloader = build_loader(
+            data_name, "main", train=True, nsample=dcfg.train_samples, num_caption_per_image=num_caption_per_image
+        )
         # evaluation
         eval_name = "IGNORE_ME" if self.cfg.eval else dcfg.eval_name
-        self.evalloader = build_loader(eval_name, "eval", eval=True, nsample=dcfg.eval_samples)
+        self.evalloader = build_loader(
+            eval_name, "eval", eval=True, nsample=dcfg.eval_samples, num_caption_per_image=num_caption_per_image
+        )
         # test 
         test_name = "IGNORE_ME" if self.cfg.eval else dcfg.test_name
-        self.testloader = build_loader(test_name, "test", test=True, nsample=dcfg.test_samples)
+        self.testloader = build_loader(
+            test_name, "test", test=True, nsample=dcfg.test_samples, num_caption_per_image=num_caption_per_image
+        )
         # necessary for model building
         self.num_tag = None if dcfg.gold_tag else self.cfg.model.pcfg.num_tag # TODO should be saved in `save()`
 
@@ -85,6 +96,7 @@ class Monitor(Monitor):
         ]
         self.echo("\n" + "\n".join(sentences))
         if tokenizer is not None:
+            #print(tokenizer.pad_token_id)
             sub_lengths = (sub_words != tokenizer.pad_token_id).sum(-1)
             sub_words = [
                 " ".join(tokenizer.convert_ids_to_tokens(sentence)[:l])
