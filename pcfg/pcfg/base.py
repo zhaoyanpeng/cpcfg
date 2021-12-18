@@ -58,26 +58,42 @@ class PCFG(torch.nn.Module):
         if cfg.z_dim <= 0:
             return
         if not cfg.wo_enc_emb:
-            self.enc_emb = nn.Embedding(len(vocab), cfg.w_dim)
-            self.enc_rnn = nn.LSTM(
-                cfg.w_dim, cfg.h_dim, bidirectional=True, num_layers=1, batch_first=True
-            )
-            i_dim = cfg.h_dim * 2
+            i_dim = self._build_embedder_from_default(vocab)
         else:
             if os.path.isfile(cfg.w2vec_file):
-                self.enc_emb = PartiallyFixedEmbedding(
-                    vocab, cfg.w2vec_file, word_dim=cfg.w_dim, out_dim=cfg.w_dim
-                )
+                i_dim = self._build_embedder_from_w2v(vocab)
             else:
-                self.enc_emb = PretrainedEncoder(
-                    cfg.mlm_model, 
-                    out_dim=cfg.mlm_out_dim, 
-                    as_encoder=cfg.as_encoder, 
-                    fine_tuned=cfg.fine_tuned, 
-                    pooler_type=cfg.mlm_pooler
-                ) 
-            i_dim = self.enc_emb.output_dim
+                i_dim = self._build_embedder_from_mlm(vocab)
         self.enc_out = nn.Linear(i_dim, cfg.z_dim * 2)
+
+    def _build_embedder_from_default(self, vocab):
+        cfg = self.cfg
+        self.enc_emb = nn.Embedding(len(vocab), cfg.w_dim)
+        self.enc_rnn = nn.LSTM(
+            cfg.w_dim, cfg.h_dim, bidirectional=True, num_layers=1, batch_first=True
+        )
+        i_dim = cfg.h_dim * 2
+        return i_dim
+
+    def _build_embedder_from_w2v(self, vocab):
+        cfg = self.cfg
+        self.enc_emb = PartiallyFixedEmbedding(
+            vocab, cfg.w2vec_file, word_dim=cfg.w_dim, out_dim=cfg.w_dim,
+        )
+        i_dim = self.enc_emb.output_dim
+        return i_dim
+
+    def _build_embedder_from_mlm(self, vocab):
+        cfg = self.cfg
+        self.enc_emb = PretrainedEncoder(
+            cfg.mlm_model,
+            out_dim=cfg.mlm_out_dim,
+            as_encoder=cfg.as_encoder,
+            fine_tuned=cfg.fine_tuned,
+            pooler_type=cfg.mlm_pooler
+        )
+        i_dim = self.enc_emb.output_dim
+        return i_dim
 
     def _initialize(self):
         skip_enc_emb = hasattr(self, "enc_emb") and not isinstance(self.enc_emb, nn.Embedding)

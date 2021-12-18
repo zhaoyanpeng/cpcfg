@@ -236,7 +236,7 @@ class PartiallyFixedEmbedding(torch.nn.Module):
         self.weight[self.n_fixed:] = self.tuned_weight
         word_emb = torch.cat([self.weight, self.tuned_vector], -1)
         word_emb = word_emb[self.realid] 
-        #word_emb = self.linear(word_emb)
+        word_emb = self.linear(word_emb)
         x_shape = X.size()
         w_logit = torch.matmul(
             X.view(-1, x_shape[-1]), word_emb.transpose(0, 1)

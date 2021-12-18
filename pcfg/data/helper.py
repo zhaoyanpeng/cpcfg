@@ -175,7 +175,7 @@ class Indexer:
                 line = line.strip().split()
                 word, idx = line[0], int(line[1])
                 if self.word2idx.get(word, None) is None:
-                    assert idx == len(self.word2idx)
+                    assert idx == len(self.word2idx), f"{idx} != {len(self.word2idx)}"
                     self.word2idx[word] = idx
         for word, idx in self.word2idx.items():
             self.idx2word[idx] = word

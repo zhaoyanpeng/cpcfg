@@ -16,8 +16,9 @@ from .base import PCFG, ResLayer
 from ..module import PretrainedEncoder, PartiallyFixedEmbedding
 
 class NaivePCFG(PCFG):
-    def __init__(self, cfg, NT=0, T=0, vocab=None, **kwargs): 
+    def __init__(self, cfg, NT=0, T=0, vocab=None, skip_init=False, **kwargs):
         super(NaivePCFG, self).__init__(cfg, NT=NT, T=T, vocab=vocab, **kwargs)
+        if skip_init: return #
         self.cfg = cfg
         h_dim = cfg.h_dim
         w_dim = cfg.w_dim
@@ -54,7 +55,7 @@ class NaivePCFG(PCFG):
         self._initialize()
 
         if cfg.tied_terms and isinstance(self.enc_emb, PartiallyFixedEmbedding):
-            self.term_mlp[-1] = enc_emb
+            self.term_mlp[-1] = self.enc_emb
 
     def forward(
         self, x, lengths, *args, sub_words=None, token_indice=None, 
