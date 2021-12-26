@@ -649,16 +649,19 @@ class Monitor(object):
                         pred_tree[t] = span
             # save predicted and gold trees
             pred_tree = pred_tree[0]
-            pred_out_fw.write(pred_tree.strip() + "\n")
+            #pred_out_fw.write(pred_tree.strip() + "\n")
             gold_out_fw.write(gold_tree.strip() + "\n")
+            saved_item = [sentence, gold_spans, labels, tags, pred_spans, pred_tree.strip()]
+            json.dump(saved_item, pred_out_fw)
+            pred_out_fw.write("\n")
             #self.echo(pred_tree)
         pred_out_fw.close()
         gold_out_fw.close()
 
-        corpus_f1 = get_f1s([corpus_f1])[0]
-        sentence_f1 = np.mean(np.array(sentence_f1)) * 100
+        corpus_f1 = get_f1s([corpus_f1])[0] * 0.01
+        sentence_f1 = np.mean(np.array(sentence_f1)) * 1#00
         msg = self.model.stats(num_sents, num_words)
-        report = f"\n{msg} Corpus F1: {corpus_f1:.2f} Sentence F1: {sentence_f1:.2f}"
+        report = f"\n{msg} Corpus F1: {corpus_f1 * 100:.2f} Sentence F1: {sentence_f1 * 100:.2f}"
         #self.echo(f"\n{msg} Corpus F1: {corpus_f1:.2f} Sentence F1: {sentence_f1:.2f}")
 
         self.summary_eval(corpus_f1, sentence_f1, f1_per_label, f1_by_length, echo=print)

@@ -13,7 +13,7 @@ from ..util import postprocess_parses, extract_parses, Stats
 from ..pcfg import build_pcfg_head
 from ..pcfg.algo import TDSeqCFG
 from ..module import build_text_head, build_loss_head, PretrainedEncoder, PartiallyFixedEmbedding
-from . import CTTP
+from . import CTTP, load_checkpoint, load_pcfg_init
 
 class VGPCFG(CTTP):
     def __init__(self, cfg, echo):
@@ -51,3 +51,28 @@ class VGPCFG(CTTP):
         #loss = (nll + kl).mean()
         #loss = (cst_loss).mean()
         return loss, (argmax_spans, argmax_trees)
+
+    def build(self, vocab=None, vocab_zh=None, num_tag=0, **kwargs):
+        tunable_params = dict()
+        if self.cfg.eval:
+            local_cfg, sds, vocab, _, num_tag = load_checkpoint(self.cfg, self.echo)
+            pcfg_head_sd, gold_head_sd, text_head_sd, loss_head_sd = sds
+            self.build_model(
+                vocab, vocab_zh=vocab_zh, num_tag=num_tag
+            )
+            n_o, o_n = self.pcfg_head.from_pretrained(pcfg_head_sd, strict=True)
+            msg = f" except {n_o}" if len(n_o) > 0 else ""
+            self.echo(f"Initialize pcfg encoder from `pcfg_head`{msg}.")
+            tunable_params = {"vocab": vocab, "num_tag": num_tag}
+            # TODO overide gold head, text head, and loss head
+        else:
+            tunable_params = self.build_model(
+                vocab, vocab_zh=vocab_zh, num_tag=num_tag
+            )
+            pcfg_head_sd = load_pcfg_init(self.cfg, self.echo)
+            if pcfg_head_sd is not None:
+                n_o, o_n = self.pcfg_head.from_pretrained(pcfg_head_sd, strict=False)
+                msg = f" except {n_o}" if len(n_o) > 0 else ""
+                self.echo(f"Initialize pcfg encoder from `pcfg_head`{msg}.")
+        self.cuda(self.cfg.rank)
+        return tunable_params

@@ -2,6 +2,7 @@ from omegaconf import OmegaConf
 import os, re
 from collections import defaultdict
 
+import json
 import time
 import torch
 import numpy as np
@@ -21,12 +22,17 @@ from ..util import (
 from . import Monitor
 
 class Monitor(Monitor):
-    """ Contrastive Text-Text Parser.
+    """ Contrastive Image-Text Parser.
     """
     def __init__(self, cfg, echo, device):
         super(Monitor, self).__init__(cfg, echo, device)
 
     def build_data(self):
+        if self.cfg.eval and os.path.isfile(self.cfg.data.eval_name):
+            self.vocab = self.num_tag = None
+            self.dataloader = self.evalloader = self.testloader = None
+            self.evalfile = self.cfg.data.eval_name #f"{self.cfg.data.data_root}/{self.cfg.data.eval_name}"
+            return # test MSCOCO parser on WSJ TODO the two datasets have different data roots, so I have to...
         dcfg = self.cfg.data
         # vocab
         self.vocab = Indexer(f"{dcfg.data_root}/{dcfg.main_vocab}")
@@ -37,8 +43,9 @@ class Monitor(Monitor):
             num_caption_per_image=5, nsample=float("inf")
         ):
             data_path = f"{dcfg.data_root}/{data_name}"
-            npz_file = f"{dcfg.data_root}/{data_name.split('_', 1)[0]}_ims.npy"
+            npz_file = f"{dcfg.data_root}/{data_name.split('_', 1)[0]}_{dcfg.npz_token}.npy"
             npz_file = npz_file if os.path.isfile(npz_file) and dcfg.embed_dim > 0 else None
+            self.echo(f"Pre-computed image vectors: {npz_file}")
             dataloader = build_dataloader(
                 dcfg, self.echo, data_name, self.vocab, train=train, nsample=nsample,
                 npz_file=npz_file, num_caption_per_image=num_caption_per_image,
@@ -64,6 +71,8 @@ class Monitor(Monitor):
         data_name = dcfg.eval_name if self.cfg.eval else dcfg.data_name
         self.dataloader = build_loader(
             data_name, "main", train=True, nsample=dcfg.train_samples, num_caption_per_image=num_caption_per_image
+        ) if not self.cfg.eval else build_loader(
+            data_name, "main", test= True, nsample= dcfg.eval_samples, num_caption_per_image=num_caption_per_image
         )
         # evaluation
         eval_name = "IGNORE_ME" if self.cfg.eval else dcfg.eval_name
@@ -118,7 +127,12 @@ class Monitor(Monitor):
         if not self.model.training:
             self.echo("Evaluating started...")
             with torch.no_grad():
-                report = self.infer(self.dataloader, samples=self.cfg.running.eval_samples)
+                if self.dataloader is not None:
+                    self.echo(f"On MSCOCO... {self.gold_file_test}")
+                    report = self.evaluate_coco(self.dataloader, samples=self.cfg.data.eval_samples)
+                else: # WSJ or something else?
+                    self.echo(f"On Others... {self.evalfile}")
+                    report = self.evaluate(self.evalfile, samples=self.cfg.data.eval_samples)
                 self.echo(f"{report}")
                 return None 
         if self.cfg.running.start_ppl > 0.:
@@ -365,4 +379,148 @@ class Monitor(Monitor):
         self.echo(f"# sample {nsample}; {nsample / (time.time() - start_time):.2f} samples/s")
 
         self.echo(model.report_main(num_x2_per_x1=num_x2_per_x1)) # retrieval perf.
-        return report 
+        return report
+
+    def evaluate_coco(self, dataloader, samples=float("inf"), iepoch=0):
+        self.model.reset()
+        num_sents = num_words = 0
+        corpus_f1, sentence_f1 = [0., 0., 0.], []
+
+        f1_per_label = defaultdict(list)
+        f1_by_length = defaultdict(list)
+
+        data_name = (self.gold_file_test.rsplit("/", 1)[1]).rsplit(".", 1)[0]
+        model_name = self.cfg.model_file.rsplit(".", 1)[0]
+        out_file_prefix = f"{self.cfg.model_root}/{self.cfg.model_name}/{model_name}-{data_name}"
+        pred_out_file = f"{out_file_prefix}.pred"
+        gold_out_file = f"{out_file_prefix}.gold"
+        pred_out_fw = open(pred_out_file, "w")
+        gold_out_fw = open(gold_out_file, "w")
+
+        losses, nsample, nchunk, ibatch = 0, 0, 1, 0
+        device_ids = [i for i in range(self.cfg.num_gpus)]
+        peep_rate = max(10, (len(dataloader) // 10))
+        start_time = time.time()
+
+        for ibatch, batch in enumerate(dataloader):
+            if nsample >= samples:
+                #print(f"{nsample}\t{ibatch}/{nbatch} continue")
+                break #continue # iterate through every batch
+
+            images, sentences, sub_words, token_indice, \
+                batch_gold_spans, batch_labels, batch_tags = self.make_batch(batch)
+            lengths = (sentences != self.vocab.PAD_IDX).sum(-1)
+
+            bsize = sentences.shape[0]
+            loss, (argmax_spans, _) = self.model(
+                sentences, lengths, token_indice=token_indice, sub_words=sub_words, use_mean=True
+            )
+            nsample += bsize * nchunk
+            losses += loss or 0.
+            if self.cfg.rank == 0 and (ibatch + 1) % peep_rate == 0:
+                self.echo(
+                    f"step {ibatch}\t" + #gnorm {grad_norm():.2f} " +
+                    f"loss {losses / (ibatch + 1):.5f} " +
+                    f"{nsample / (time.time() - start_time):.2f} samples/s"
+                )
+
+            ibatch += 1
+            num_sents += bsize
+            # we implicitly generate </s> so we explicitly count it
+            num_words += (lengths + 1).sum().item()
+            for b, (length, sentence) in enumerate(zip(lengths.tolist(), sentences.tolist())):
+                sentence = [
+                    self.vocab(wid) for i, wid in enumerate(sentence) if i < length
+                ] # ideally, sentence should not be number-cleaned, but ...
+
+                tags = batch_tags[b]
+                labels = batch_labels[b]
+                gold_spans = batch_gold_spans[b]
+
+                gold_tree = build_parse(gold_spans, sentence)
+
+                # corpus-level f1
+                gold_spans = [(a[0], a[1]) for a in gold_spans if a[0] != a[1]]
+                pred_spans = [(a[0], a[1]) for a in argmax_spans[b] if a[0] != a[1]]
+                pred_span_set = set(pred_spans[:-1]) # remove the trivial sentence-level span
+                gold_span_set = set(gold_spans[:-1])
+                tp, fp, fn = get_stats(pred_span_set, gold_span_set)
+                corpus_f1[0] += tp
+                corpus_f1[1] += fp
+                corpus_f1[2] += fn
+                # sentence-level f1
+                pred_out = pred_span_set
+                gold_out = gold_span_set
+                overlap = pred_out.intersection(gold_out)
+                p = float(len(overlap)) / (len(pred_out) + 1e-8)
+                r = float(len(overlap)) / (len(gold_out) + 1e-8)
+                if len(gold_out) == 0:
+                    r = 1.
+                    if len(pred_out) == 0:
+                        p = 1.
+                f1 = 2 * p * r / (p + r + 1e-8)
+                sentence_f1.append(f1)
+                # f1 per label & by length
+                for ispan, gold_span in enumerate(gold_spans[:-1]):
+                    label = labels[ispan]
+                    label = re.split("=|-", label)[0]
+                    f1_per_label.setdefault(label, [0., 0.])
+                    f1_per_label[label][0] += 1
+
+                    lspan = gold_span[1] - gold_span[0] + 1
+                    f1_by_length.setdefault(lspan, [0., 0.])
+                    f1_by_length[lspan][0] += 1
+
+                    if gold_span in pred_span_set:
+                        f1_per_label[label][1] += 1
+                        f1_by_length[lspan][1] += 1
+                # represent a tree by a binary matrix
+                argmax_tags = torch.zeros(1, length)
+                argmax_tree = torch.zeros(1, length, length)
+                for l, r, A in argmax_spans[b]:
+                    argmax_tree[0][l][r] = 1
+                    if l == r:
+                      argmax_tags[0][l] = A
+                # extract the tree from the binary matrix
+                argmax_tags = argmax_tags[0].cpu().numpy()
+                argmax_tree = argmax_tree[0].cpu().numpy()
+                label_matrix = np.zeros((length, length))
+                for span in argmax_spans[b]:
+                    label_matrix[span[0]][span[1]] = span[2]
+                pred_tree = {}
+                for i in range(length):
+                    tag = "T-" + str(int(argmax_tags[i].item()) + 1)
+                    pred_tree[i] = "(" + tag + " " + sentence[i] + ")"
+                for k in np.arange(1, length):
+                    for s in np.arange(length):
+                        t = s + k
+                        if t > length - 1: break
+                        if argmax_tree[s][t] == 1:
+                            nt = "NT-" + str(int(label_matrix[s][t]) + 1)
+                            span = "(" + nt + " " + pred_tree[s] + " " + pred_tree[t] +  ")"
+                            pred_tree[s] = span
+                            pred_tree[t] = span
+                # save predicted and gold trees
+                pred_tree = pred_tree[0]
+                #pred_out_fw.write(pred_tree.strip() + "\n")
+                gold_out_fw.write(gold_tree.strip() + "\n")
+                saved_item = [sentence, gold_spans, labels, tags, pred_spans, pred_tree.strip()]
+                json.dump(saved_item, pred_out_fw)
+                pred_out_fw.write("\n")
+                #self.echo(pred_tree) # end loop over batch
+        pred_out_fw.close()
+        gold_out_fw.close()
+
+        corpus_f1 = get_f1s([corpus_f1])[0] * 0.01
+        sentence_f1 = np.mean(np.array(sentence_f1)) * 1#00
+        msg = self.model.stats(num_sents, num_words)
+        report = f"\n{msg} Corpus F1: {corpus_f1 * 100:.2f} Sentence F1: {sentence_f1 * 100:.2f}"
+        #self.echo(f"\n{msg} Corpus F1: {corpus_f1:.2f} Sentence F1: {sentence_f1:.2f}")
+
+        self.summary_eval(corpus_f1, sentence_f1, f1_per_label, f1_by_length, echo=print)
+
+        model = self.model.module if isinstance(self.model, DistributedDataParallel) else self.model
+        self.echo(f"# sample {nsample}; {nsample / (time.time() - start_time):.2f} samples/s")
+        #return model.report()
+        model.report()
+        return report

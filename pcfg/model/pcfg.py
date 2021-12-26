@@ -82,7 +82,8 @@ class XPCFG(nn.Module):
     def build(self, vocab=None, vocab_zh=None, num_tag=0, **kwargs):
         tunable_params = dict()
         if self.cfg.eval:
-            local_cfg, pcfg_head_sd, vocab, _, num_tag = load_checkpoint(self.cfg, self.echo)
+            local_cfg, sds, vocab, _, num_tag = load_checkpoint(self.cfg, self.echo)
+            pcfg_head_sd = sds[0]
             self.build_model(
                 vocab, vocab_zh=vocab_zh, num_tag=num_tag
             )

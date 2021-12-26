@@ -101,10 +101,11 @@ class LexiconPCFG(NaivePCFG):
         return mean, lvar, (attn_weights,)
 
     def from_pretrained(self, state_dict, strict=True):
-        pattern = "|".join([f"^{m}\." for m in self.excluded])
+        excluded = [] if strict else self.excluded
+        pattern = "|".join([f"^{m}\." for m in excluded])
         new_dict = self.state_dict()
         old_dict = {
-            k: v for k, v in state_dict.items() if pattern != "" and not re.match(pattern, k)
+            k: v for k, v in state_dict.items() if pattern == "" or not re.match(pattern, k)
         }
 
         new_keys = set(new_dict.keys())

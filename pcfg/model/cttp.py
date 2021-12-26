@@ -168,10 +168,10 @@ class CTTP(nn.Module):
             return ""
 
     def forward(
-        self, sentences, lengths, *args, token_indice=None, sub_words=None, **kwargs
+        self, sentences, lengths, *args, token_indice=None, sub_words=None, use_mean=False, **kwargs
     ):
         params, kl, losses = self.pcfg_head(
-            sentences, lengths, token_indice=token_indice, sub_words=sub_words
+            sentences, lengths, token_indice=token_indice, sub_words=sub_words, use_mean=use_mean
         )
         dist = SentCFG(params, lengths=lengths)
         spans = dist.argmax[-1]

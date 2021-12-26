@@ -21,7 +21,11 @@ def load_checkpoint(cfg, echo):
     if nmodule == 1:
         (pcfg_head_sd,) = checkpoint["model"]
         num_tag = pcfg_head_sd["term_emb"].shape[0]
-        return local_cfg, pcfg_head_sd, vocab, None, num_tag 
+        return local_cfg, (pcfg_head_sd, None, None, None), vocab, None, num_tag
+    elif nmodule == 4:
+        (pcfg_head_sd, gold_head_sd, text_head_sd, loss_head_sd) = checkpoint["model"]
+        num_tag = pcfg_head_sd["term_emb"].shape[0]
+        return local_cfg, (pcfg_head_sd, gold_head_sd, text_head_sd, loss_head_sd), vocab, None, num_tag
     else:
         raise ValueError(f"I don't know how to parse the checkpoint: # module is {nmodule}.")
 

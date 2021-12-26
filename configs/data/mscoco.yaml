@@ -6,6 +6,7 @@ pair_name: ""
 data_name: "" 
 eval_name: "" 
 test_name: "" 
+npz_token: ""
 data_keys: "" 
 data_seed: null #sync randomness for data sampling 
 train_samples: 1e9 
