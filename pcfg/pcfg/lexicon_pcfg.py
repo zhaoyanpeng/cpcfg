@@ -58,6 +58,7 @@ class LexiconPCFG(NaivePCFG):
             nn.Linear(term_dim_o, len(vocab)),
         ) 
         self.term_mlp = nn.Sequential(*term_modules)
+        self._count_rnd_consumed()
         self._initialize()
 
         self.excluded = []
@@ -100,8 +101,8 @@ class LexiconPCFG(NaivePCFG):
         lvar = out[:, self.z_dim :]
         return mean, lvar, (attn_weights,)
 
-    def from_pretrained(self, state_dict, strict=True):
-        excluded = [] if strict else self.excluded
+    def from_pretrained(self, state_dict, excluded={}, strict=True):
+        excluded = [] if strict else (self.excluded if len(excluded) == 0 else excluded)
         pattern = "|".join([f"^{m}\." for m in excluded])
         new_dict = self.state_dict()
         old_dict = {

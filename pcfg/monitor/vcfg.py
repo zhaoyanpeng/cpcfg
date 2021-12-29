@@ -26,6 +26,30 @@ class Monitor(Monitor):
     """
     def __init__(self, cfg, echo, device):
         super(Monitor, self).__init__(cfg, echo, device)
+        if cfg.data.num_rnd_consumed <= 0:
+            num_rnd_consumed = self.model.count_rnd_consumed()
+            self.echo(f"# rnd: {num_rnd_consumed}")
+            num_rnd_consumed = sum(num_rnd_consumed.values())
+        else: # reset rnd seed and get to the desired rnd-number position for dataloader
+            self.echo(f"# rnd: {cfg.data.num_rnd_consumed} # param.: {numel(self.model)}")
+            seed_all_rng(cfg.seed)
+
+            #pcfg = self.cfg.model.pcfg
+            #kwargs = {"NT": pcfg.num_state, "T": self.num_tag, "vocab": self.vocab}
+            #from ..pcfg import build_pcfg_head
+            #pcfg = build_pcfg_head(pcfg, **kwargs)
+            #self.echo(pcfg.num_rnd_consumed)
+            #seed_all_rng(cfg.seed)
+
+            k, step = cfg.data.num_rnd_consumed, 100000
+            #k = pcfg.num_rnd_consumed
+            for i in range(0, k, step): # consume the first k rnd numbers
+                if i + step > k: break
+                torch.rand(step)
+            torch.rand(k % step)
+        #for step, batch in enumerate(self.dataloader, start=0 * len(self.dataloader)):
+        #    self.make_batch(batch, show_batch=True)
+        #import sys; sys.exit(0)
 
     def build_data(self):
         if self.cfg.eval and os.path.isfile(self.cfg.data.eval_name):

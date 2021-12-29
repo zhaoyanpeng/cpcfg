@@ -9,6 +9,7 @@ test_name: ""
 npz_token: ""
 data_keys: "" 
 data_seed: null #sync randomness for data sampling 
+num_rnd_consumed: -1
 train_samples: 1e9 
 eval_samples: 250 
 test_samples: 5000

@@ -32,3 +32,4 @@ select_key: "" #how to parameterize binary rules
 ##  initialization
 perturb_it: False #perturb parameter values
 model_init: ${model_init}
+excluded: [] # the excluded keys from the init

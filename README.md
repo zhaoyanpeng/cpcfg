@@ -1,6 +1,6 @@
 # Fast and Modularized Implementations of XCFGs
 
-**Update (12/12/2021):** Add an implementation of [VG-PCFG](https://github.com/zhaoyanpeng/vpcfg).
+**Update (12/12/2021):** Add an implementation of [VC-PCFG](https://github.com/zhaoyanpeng/vpcfg).
 
 **Update (03/10/2021):** Fast and modularized implementations of [XCFGs](https://github.com/zhaoyanpeng/xcfg).
 

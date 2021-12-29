@@ -45,7 +45,9 @@ class VGPCFG(CTTP):
         meter = self.meter_main if self.training else self.meter_eval
         meter(
             nll=nll.detach().sum().item(), kl=kl.detach().sum().item(), 
-            cst=cst_loss.detach().sum().item() / (1. if self.loss_head is None else self.loss_head.lambd_cst)
+            cst=cst_loss.detach().sum().item() / (
+                1. if self.loss_head is None or self.loss_head.lambd_cst == 0. else self.loss_head.lambd_cst
+            )
         )
         loss = (nll + kl + cst_loss).mean()
         #loss = (nll + kl).mean()
@@ -71,7 +73,9 @@ class VGPCFG(CTTP):
             )
             pcfg_head_sd = load_pcfg_init(self.cfg, self.echo)
             if pcfg_head_sd is not None:
-                n_o, o_n = self.pcfg_head.from_pretrained(pcfg_head_sd, strict=False)
+                n_o, o_n = self.pcfg_head.from_pretrained(
+                    pcfg_head_sd, excluded=list(self.cfg.model.pcfg.excluded), strict=False
+                )
                 msg = f" except {n_o}" if len(n_o) > 0 else ""
                 self.echo(f"Initialize pcfg encoder from `pcfg_head`{msg}.")
         self.cuda(self.cfg.rank)

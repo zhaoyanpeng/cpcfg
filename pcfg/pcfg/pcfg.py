@@ -52,6 +52,7 @@ class NaivePCFG(PCFG):
             nn.Linear(s_dim, len(vocab)),
         ) 
         self.term_mlp = nn.Sequential(*term_modules)
+        self._count_rnd_consumed()
         self._initialize()
 
         if cfg.tied_terms and isinstance(self.enc_emb, PartiallyFixedEmbedding):

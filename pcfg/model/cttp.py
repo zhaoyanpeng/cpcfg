@@ -237,6 +237,13 @@ class CTTP(nn.Module):
             self.loss_head.state_dict() if self.loss_head is not None else {},
         )
 
+    def count_rnd_consumed(self):
+        return {
+            "pcfg": 0 if self.pcfg_head is None else self.pcfg_head.num_rnd_consumed,
+            "gold": 0 if self.gold_head is None else self.gold_head.num_rnd_consumed,
+            "text": 0 if self.text_head is None else self.text_head.num_rnd_consumed,
+        }
+
     def build(self, vocab=None, vocab_zh=None, num_tag=0, **kwargs):
         tunable_params = dict()
         if self.cfg.eval:

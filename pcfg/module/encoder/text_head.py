@@ -52,16 +52,30 @@ class LinearHead(nn.Module):
         )
         self.encoder = nn.Sequential(*layers)
         self._output_dim = cfg.embed_dim
+        self._num_rnd_consumed = 0
+        self._count_rnd_consumed()
         self._initialize()
 
     @property
     def output_dim(self):
         return self._output_dim
 
+    @property
+    def num_rnd_consumed(self):
+        return self._num_rnd_consumed
+
     def _initialize(self): 
         for p in self.parameters():
             if p.dim() > 1:
                 torch.nn.init.xavier_uniform_(p)
+                self._num_rnd_consumed += torch.numel(p)
+
+    def _count_rnd_consumed(self):
+        for layer in self.encoder:
+            if not isinstance(layer, nn.Linear):
+                continue
+            for p in layer.parameters():
+                self._num_rnd_consumed += torch.numel(p)
 
     def forward(self, text, *args, **kwargs):
         z = self.encoder(text)
@@ -107,6 +121,8 @@ class SRNNTextEncoder(torch.nn.Module):
         self.enc_out = nn.Linear(cfg.h_dim * 2, cfg.embed_dim * self.num_state, bias=cfg.bias)
         self.enc_emb = nn.Embedding(len(vocab), cfg.w_dim)
         self._output_dim = cfg.embed_dim
+        self._num_rnd_consumed = 0
+        self._count_rnd_consumed()
         self._initialize()
         # word emb sharing 
         if enc_emb is not None:
@@ -116,10 +132,19 @@ class SRNNTextEncoder(torch.nn.Module):
     def output_dim(self):
         return self._output_dim
 
+    @property
+    def num_rnd_consumed(self):
+        return self._num_rnd_consumed
+
     def _initialize(self): 
         for p in self.parameters():
             if p.dim() > 1:
                 torch.nn.init.xavier_uniform_(p)
+                self._num_rnd_consumed += torch.numel(p)
+
+    def _count_rnd_consumed(self):
+        for k, p in self.named_parameters():
+            self._num_rnd_consumed += torch.numel(p)
 
     def mean_span(self, word_emb):
         device = word_emb.device
