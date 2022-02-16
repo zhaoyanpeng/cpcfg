@@ -32,7 +32,8 @@ class Monitor(object):
         self.device = device
         self.build_data()
         model = build_main_model(cfg, echo)
-        tunable_params = model.build(**{"vocab": self.vocab, "num_tag": self.num_tag})
+        vocab = self.vocab_tag if self.cfg.data.usez_tag else self.vocab
+        tunable_params = model.build(**{"vocab": vocab, "num_tag": self.num_tag})
         self.amend_data(model, **tunable_params)
         self.model = DistributedDataParallel(
             model, device_ids=[cfg.rank], find_unused_parameters=True
@@ -158,6 +159,7 @@ class Monitor(object):
             self.cfg.running.peep_rate = nstep 
         self.echo(f"Instantiate main dataloader from `{data_name}': total {nstep} ({nsample}-{self.cfg.running.peep_rate}) batches.")
         self.vocab = VocabContainer(dataset.idx2word, dataset.word2idx)
+        self.vocab_tag = VocabContainer(dataset.idx2tag, dataset.tag2idx)
         self.gold_file = f"{dcfg.data_root}/{data_name}"
         # evaluation
         eval_name = "IGNORE_ME" if self.cfg.eval else dcfg.eval_name
@@ -239,6 +241,7 @@ class Monitor(object):
         self.total_loss = 0
         self.total_step = 0
         self.total_inst = 0
+        self.epoch_inst = 0
         self.optim_step = 0
         self.max_length = self.cfg.running.start_max_length
         self.start_time = time.time()
@@ -252,12 +255,12 @@ class Monitor(object):
                 self.dataloader.sampler.set_epoch(iepoch)
             if iepoch >= 1:
                 pass #break
-            self.num_sents = self.num_words = 0.
+            self.num_sents = self.num_words = self.epoch_inst = 0.
             self.all_stats = [[0., 0., 0.]]
             self.epoch(iepoch)
 
     def make_batch(self, batch):
-        def show_batch(batch, vocab, tokenizer):
+        def show_batch(batch, vocab, vocab_tag, tokenizer):
             tags, sentences, length, batch_size, _, gold_spans, gold_btrees, other_data = batch
             sub_words, token_indice = other_data[1:] if isinstance(other_data[-1], torch.Tensor) else (None, None)
             other_data = other_data[0] # this returns `other_data` for the first sample, we do not need `other_data` though
@@ -268,6 +271,12 @@ class Monitor(object):
                 for l, sentence in zip(lengths.tolist(), sentences.tolist())
             ]
             self.echo("\n" + "\n".join(sentences))
+            if tags is not None:
+                sentences = [
+                    " ".join([vocab_tag(wid) for i, wid in enumerate(sentence) if i < l])
+                    for l, sentence in zip(lengths.tolist(), tags.tolist())
+                ]
+                self.echo("\n" + "\n".join(sentences))
             if tokenizer is not None:
                 sub_lengths = (sub_words != tokenizer.pad_token_id).sum(-1)
                 sub_words = [
@@ -277,8 +286,8 @@ class Monitor(object):
                 self.echo("\n" + "\n".join(sub_words))
             ## end of show_batch()
 
-        #vocab, tokenizer = self.vocab, self.model.tokenizer()
-        #show_batch(batch, vocab, tokenizer)
+        #vocab, vocab_tag, tokenizer = self.vocab, self.vocab_tag, self.model.tokenizer()
+        #show_batch(batch, vocab, vocab_tag, tokenizer)
         #import sys; sys.exit(0)
 
         tags, sentences, length, batch_size, _, gold_spans, gold_btrees, other_data = batch
@@ -334,7 +343,10 @@ class Monitor(object):
                 sentence = [self.vocab(word_idx) for word_idx in sentences[0].tolist()]
                 pred_tree = get_tree(get_actions(argmax_btrees[0]), sentence)
                 gold_tree = get_tree(gold_btrees[0], sentence)
-                self.echo(f"\nPred Tree: {pred_tree}\nGold Tree: {gold_tree}")
+                # what else do you want to print?
+                batch_stats = self.model.batch_stats()
+                batch_stats = "" if batch_stats is None else f"\n{batch_stats}"
+                self.echo(f"\nPred Tree: {pred_tree}\nGold Tree: {gold_tree}{batch_stats}")
             # overall stats 
             lr_w = self.optimizer.param_groups[0]['lr']
             lr_b = self.optimizer.param_groups[1]['lr']
@@ -407,7 +419,8 @@ class Monitor(object):
             self.timeit(all_time, key="data")
 
             loss, (argmax_spans, argmax_btrees) = self.model(
-                sequences, lengths, token_indice=token_indice, sub_words=sub_words
+                sequences, lengths, token_indice=token_indice, sub_words=sub_words,
+                tags=(tags if self.cfg.data.gold_tag else None)
             )
             loss.backward()
             if self.optim_step % self.cfg.running.optim_rate == 0: 
@@ -422,6 +435,7 @@ class Monitor(object):
             self.total_step += 1
             self.total_loss += loss.detach()
             self.total_inst += bsize * nchunk
+            self.epoch_inst += bsize * nchunk
 
             ppl_criteria = self.post_step(
                 iepoch, epoch_step, force_eval, warmup, nchunk, 
@@ -436,6 +450,9 @@ class Monitor(object):
                 if epoch_step < 9544:
                     pass #continue
                 ppl_criteria = do_batch(batch_data, epoch_step + 1)
+                if self.epoch_inst > self.cfg.data.train_samples:
+                    ppl_criteria = self.post_step(iepoch, epoch_step, True, False, -1, None)
+                    break
         else:
             # iterate over batches
             for epoch_step, ibatch in enumerate(np.random.permutation(len(self.dataloader))):
@@ -445,6 +462,9 @@ class Monitor(object):
                 ppl_criteria = do_batch(batch_data, epoch_step + 1)
                 if epoch_step > 100:
                     pass #break
+                if self.epoch_inst > self.cfg.data.train_samples:
+                    ppl_criteria = self.post_step(iepoch, epoch_step, True, False, -1, None)
+                    break
 
         if not self.cfg.optimizer.use_lars and not self.cfg.optimizer.batch_sch and \
             self.scheduler is not None:
@@ -479,7 +499,8 @@ class Monitor(object):
             sequences = tags if self.cfg.data.usez_tag else sentences
 
             loss, (argmax_spans, argmax_btrees) = self.model(
-                sequences, lengths, token_indice=token_indice, sub_words=sub_words
+                sequences, lengths, token_indice=token_indice, sub_words=sub_words,
+                tags=(tags if self.cfg.data.gold_tag else None)
             )
             nsample += bsize * nchunk
             losses += loss or 0.
@@ -570,7 +591,8 @@ class Monitor(object):
             sequences = tags if self.cfg.data.usez_tag else sentences
 
             loss, (argmax_spans, _) = self.model(
-                sequences, lengths, token_indice=token_indice, sub_words=sub_words
+                sequences, lengths, token_indice=token_indice, sub_words=sub_words,
+                tags=(tags if self.cfg.data.gold_tag else None)
             )
             nsample += bsize * nchunk
             losses += loss or 0.

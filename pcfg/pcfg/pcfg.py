@@ -90,7 +90,7 @@ class NaivePCFG(PCFG):
             root_emb = self.root_emb.expand(b, self.s_dim)
             if not pcfg and self.z_dim > 0 and not self.cfg.share_root:
                 root_emb = torch.cat([root_emb, self.z], -1)
-                mlp = self.root_mlp
+            mlp = self.root_mlp
             root_prob = F.log_softmax(mlp(root_emb), -1)
             return root_prob
         
@@ -105,7 +105,7 @@ class NaivePCFG(PCFG):
                 z_expand = z.unsqueeze(1).expand(b, n, self.z_dim)
                 z_expand = z_expand.unsqueeze(2).expand(b, n, self.T, self.z_dim)
                 term_emb = torch.cat([term_emb, z_expand], -1)
-                mlp = self.term_mlp
+            mlp = self.term_mlp
             term_prob = F.log_softmax(mlp(term_emb), -1)
             indices = x.unsqueeze(2).expand(b, n, self.T).unsqueeze(3)
             term_prob = torch.gather(term_prob, 3, indices).squeeze(3)
@@ -120,7 +120,7 @@ class NaivePCFG(PCFG):
                     b, self.NT, self.z_dim
                 )
                 nonterm_emb = torch.cat([nonterm_emb, z_expand], -1)
-                mlp = self.rule_mlp
+            mlp = self.rule_mlp
             rule_prob = F.log_softmax(mlp(nonterm_emb), -1)
             rule_prob = rule_prob.view(b, self.NT, self.NT_T, self.NT_T)
             return rule_prob

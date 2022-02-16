@@ -58,6 +58,19 @@ class PCFG(torch.nn.Module):
     def num_rnd_consumed(self):
         return self._num_rnd_consumed
 
+    def extra_repr(self):
+        mod_keys = self._modules.keys()
+        all_keys = self._parameters.keys()
+        extra_keys = all_keys - mod_keys
+        extra_keys = [k for k in all_keys if k in extra_keys]
+        extra_lines = []
+        for key in extra_keys:
+            attr = getattr(self, key)
+            if not isinstance(attr, nn.Parameter):
+                continue
+            extra_lines.append("({}): Tensor{}".format(key, tuple(attr.size())))
+        return "\n".join(extra_lines)
+
     def _build_z_encoder(self, vocab):
         cfg = self.cfg
         if cfg.z_dim <= 0:

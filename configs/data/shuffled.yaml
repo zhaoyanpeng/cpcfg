@@ -17,5 +17,5 @@ batch_size: 4
 min_length: 2 
 max_length: 40 
 rnd_length: True #batch of sentences of diff. lengths
-usez_tag: False 
-gold_tag: False 
+usez_tag: ${model.pcfg.usez_tag}
+gold_tag: ${model.pcfg.gold_tag}

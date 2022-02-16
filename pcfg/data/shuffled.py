@@ -126,7 +126,7 @@ def build_random_treebank(cfg, echo, data_name, train=False, key=None):
         dataset.idx2tag = SWAP_k_V(dataset.tag2idx) 
 
     if train:
-        sampler = SortedBlockSampler
+        sampler = True#SortedBlockSampler
         sampler_def = SortedRandomSampler
         if not isinstance(sampler, bool) and issubclass(sampler, data.Sampler):
             sampler_def = sampler

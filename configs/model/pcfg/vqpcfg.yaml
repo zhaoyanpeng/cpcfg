@@ -1,4 +1,4 @@
-name: 'NaivePCFG' 
+name: 'VQPCFG' 
 ##  base model 
 num_tag: 60 #num of preterminal states
 num_state: 30 #num of nonterminal states
@@ -26,11 +26,17 @@ fine_tuned: False # will tune mlm?
 mlm_pooler: max #pooled sentence repr
 mlm_out_dim: -1 #output embedding dim
 ##  sub-pcfg model 
-vq_quant: -512 #number of quantized vectors
+vq_quant: 512 #number of quantized vectors
 vq_decay: 0.99 #decay rate in exponential moving average
-select_key: "" #how to parameterize binary rules
+vq_rule: true
+vq_root: true
+cosine_logits: true
+share_vq_rule: false 
+nt_rule: 100
+nt_root: 100
 usez_tag: False
 gold_tag: False
+select_key: "" #how to parameterize binary rules
 ##  initialization
 perturb_it: False #perturb parameter values
 model_init: ${model_init}

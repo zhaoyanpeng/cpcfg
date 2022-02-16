@@ -22,5 +22,5 @@ max_length: 40
 rnd_length: False #batch of sentences of diff. lengths
 embed_dim: ${model.gold.input_dim} 
 vis_mode: True
-usez_tag: False 
-gold_tag: False 
+usez_tag: ${model.pcfg.usez_tag}
+gold_tag: ${model.pcfg.gold_tag}

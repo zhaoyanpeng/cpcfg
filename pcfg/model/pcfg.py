@@ -46,6 +46,9 @@ class XPCFG(nn.Module):
     def encode_text(self, text):
         return self.pcfg_head.enc_emb(text)[-1]
 
+    def batch_stats(self, vocab=None, **kwargs):
+        return None
+
     def stats(self, num_sents, num_words): 
         pnorm = lambda : sum([p.norm(p=2) ** 2 for p in self.parameters() 
             if p is not None and p.requires_grad
