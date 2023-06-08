@@ -230,6 +230,25 @@ class PartiallyFixedEmbedding(torch.nn.Module):
     def reindex(self, X):
         return X.clone().cpu().apply_(self.idx_mapping.get)
 
+    def get_tunable_word_list(self):
+        nword = self.weight.shape[0]
+        idx_mapping = {v: k for k, v in self.idx_mapping.items()}
+        return [idx_mapping[i] for i in range(self.n_fixed, nword)]
+
+    def get_word_vector(self, wid):
+        realid = self.realid[wid]
+        if realid == 0: return self.weight[realid] # id of the unknown word
+        assert realid >= self.n_fixed
+        realid = realid - self.n_fixed
+        return self.tuned_weight[realid]
+
+    def set_word_vector(self, wid, vector):
+        realid = self.realid[wid]
+        assert realid >= self.n_fixed
+        realid = realid - self.n_fixed
+        with torch.no_grad():
+            self.tuned_weight[realid] = vector
+
     def bmm(self, X):
         self.realid.detach_()
         self.weight.detach_()

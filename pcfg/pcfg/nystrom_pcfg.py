@@ -62,6 +62,11 @@ class NystromPCFG(VQPCFG):
         if cfg.tied_terms and isinstance(self.enc_emb, PartiallyFixedEmbedding):
             self.term_mlp[-1] = enc_emb
 
+    def default_param(self):
+        rule_dim = s_dim = self.cfg.s_dim
+        self.p_emb = nn.Parameter(torch.randn(self.NT, rule_dim))
+        self.rule_mlp = nn.Linear(rule_dim, self.NT_T ** 2)
+
     def a_b_c_param(self):
         # factorize A->BC params into Aa x Bb x Cc
         s_dim = self.cfg.s_dim
@@ -95,6 +100,7 @@ class NystromPCFG(VQPCFG):
 
         self.p_rank, self.lc_rank, self.rc_rank = \
             self.cfg.p_rank, self.cfg.lc_rank, self.cfg.rc_rank 
+        self.scale = 1 / math.sqrt(z_dim)
 
     def a_bc_param(self):
         # factorize A->BC params into Aa x Rr
@@ -122,6 +128,7 @@ class NystromPCFG(VQPCFG):
         self.uc_key = nn.Linear(s_dim, z_dim)
 
         self.p_rank, self.uc_rank = self.cfg.p_rank, self.cfg.uc_rank
+        self.scale = 1 / math.sqrt(z_dim)
 
     def _build_z_encoder(self, vocab):
         cfg = self.cfg
@@ -157,6 +164,7 @@ class NystromPCFG(VQPCFG):
                 item, lengths, max_pooling=max_pooling, enforce_sorted=enforce_sorted
             )
             self.z = torch.cat([mean, lvar], dim=-1)
+            self.kl_ = None #self.kl(mean, lvar).sum(1)
 
     @staticmethod
     def select_prob(b, emb, emb_mlp, key_mlp, query, rank):
@@ -165,10 +173,25 @@ class NystromPCFG(VQPCFG):
         logit = torch.bmm(key_mlp(emb), query.unsqueeze(-1))
 
         p_topk = soft_topk(logit, rank, noise=100)
-        p_emb = emb # * p_topk # back propagate to z
+        p_emb = emb * p_topk # back propagate to z
         p_row = p_emb.masked_select(p_topk == 1)
         p_row = p_row.view(b, rank, -1)
-        return p_emb, p_row, p_topk
+
+        q_dist = logit.squeeze(-1).softmax(-1)
+        q_logp = logit.squeeze(-1).log_softmax(-1)
+
+        N = emb.shape[1]
+        kl = (q_dist * (q_logp + math.log(N))).sum(-1)
+        he = (q_dist * q_logp).sum(-1)
+        return p_emb, p_row, p_topk, kl
+
+    def default_prob(self, b):
+        p_emb = self.p_emb.unsqueeze(0).expand(
+            b, self.NT, self.s_dim
+        )
+        rule_prob = F.log_softmax(self.rule_mlp(p_emb), -1)
+        rule_prob = rule_prob.view(b, self.NT, self.NT_T, self.NT_T)
+        return rule_prob
 
     def a_bc_prob(self, b):
         rule_prob = F.log_softmax(torch.matmul(
@@ -177,20 +200,47 @@ class NystromPCFG(VQPCFG):
         rule_prob = rule_prob.view(b, self.NT, self.NT_T, self.NT_T)
         return rule_prob
 
+    def iterative_inv(self, mat, n_iter=6, self_init_option=""):
+        identity = torch.eye(mat.size(-1), device=mat.device)
+        key = mat
+
+        # The entries of key are positive and ||key||_{\infty} = 1 due to softmax
+        if self_init_option == "original":
+            # This original implementation is more conservative to compute coefficient of Z_0.
+            value = 1 / torch.max(torch.sum(key, dim=-2)) * key.transpose(-1, -2)
+        else:
+            # This is the exact coefficient computation, 1 / ||key||_1, of initialization of Z_0, leading to faster convergence.
+            value = 1 / torch.max(torch.sum(key, dim=-2), dim=-1).values[:, :, None, None] * key.transpose(-1, -2)
+
+        for _ in range(n_iter):
+            key_value = torch.matmul(key, value)
+            value = torch.matmul(
+                0.25 * value,
+                13 * identity
+                - torch.matmul(key_value, 15 * identity - torch.matmul(key_value, 7 * identity - key_value)),
+            )
+        return value
+
     def select_a_bc_prob(self, b):
         p_z, uc_z = self.z.chunk(2, -1)
 
-        p_emb, p_row, p_topk = self.select_prob(
+        p_emb, p_row, p_topk, p_kl = self.select_prob(
             b, self.p_emb, self.p_mlp, self.p_key, p_z, self.p_rank
         )
 
-        uc_emb, uc_row, uc_topk = self.select_prob(
-            b, self.c_emb, self.uc_mlp, self.uc_key, uc_z, self.uc_rank
+        uc_emb, uc_row, uc_topk, uc_kl = self.select_prob(
+            b, self.c_emb, self.uc_mlp, self.uc_key, p_z, self.uc_rank
         )
 
-        factor1 = F.softmax(torch.bmm(p_emb, uc_row.transpose(1, 2)), -1)
-        factor2 = F.softmax(torch.bmm(p_row, uc_emb.transpose(1, 2)), -1)
-        core = F.softmax(torch.bmm(uc_row, p_row.transpose(1, 2)), -1)
+        self.kl_ = uc_kl * 1.
+
+        factor1 = F.softmax(torch.bmm(p_emb, uc_row.transpose(1, 2)) * self.scale, -1)
+        factor2 = F.softmax(torch.bmm(p_row, uc_emb.transpose(1, 2)) * self.scale, -1)
+        #core = F.softmax(torch.bmm(uc_row, p_row.transpose(1, 2)), -1)
+
+        core = F.softmax(torch.bmm(p_row, uc_row.transpose(1, 2)) * self.scale, -1)
+        core = self.iterative_inv(core.unsqueeze(1)).squeeze(1)
+        core = F.softmax(core, -1)
 
         rule_prob = torch.bmm(
             torch.bmm(factor1, core), factor2
@@ -212,16 +262,16 @@ class NystromPCFG(VQPCFG):
     def select_a_b_c_prob(self, b):
         p_z, lc_z, rc_z = self.z.chunk(3, -1)
 
-        p_emb, p_row, p_topk = self.select_prob(
+        p_emb, p_row, p_topk, _ = self.select_prob(
             b, self.p_emb, self.p_mlp, self.p_key, p_z, self.p_rank
         )
 
         c_emb = torch.cat((self.p_emb, self.c_emb), 0)
 
-        lc_emb, lc_row, lc_topk = self.select_prob(
+        lc_emb, lc_row, lc_topk, _ = self.select_prob(
             b, c_emb, self.lc_mlp, self.lc_key, lc_z, self.lc_rank
         )
-        rc_emb, rc_row, rc_topk = self.select_prob(
+        rc_emb, rc_row, rc_topk, _ = self.select_prob(
             b, c_emb, self.rc_mlp, self.rc_key, rc_z, self.rc_rank
         )
 
@@ -270,5 +320,6 @@ class NystromPCFG(VQPCFG):
         
         rules_fn = f"self.{self.cfg.param_fn}_prob"
         roots_ll, terms_ll, rules_ll = roots(), terms(), eval(rules_fn)(b)
+        kl = getattr(self, "kl_", None)
         extra = {}
-        return (terms_ll, rules_ll, roots_ll), None, extra
+        return (terms_ll, rules_ll, roots_ll), kl, extra

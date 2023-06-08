@@ -43,7 +43,7 @@ model_init: ${model_init}
 excluded: [] # the excluded keys from the init
 ##  nystrom rank
 param_fn: a_b_c
-p_rank: 15 
+p_rank: 30
 lc_rank: 45
 rc_rank: 45
-uc_rank: 45
+uc_rank: 30

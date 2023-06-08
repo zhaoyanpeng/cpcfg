@@ -158,6 +158,8 @@ class Indexer:
             self.from_file(index_file)
         elif len(extra_keys) > 0:
             self.from_list(extra_keys)
+        else:
+            self.from_none()
         self._name = name
 
     @property
@@ -167,6 +169,11 @@ class Indexer:
     @property
     def word_list(self):
         return [self.idx2word[k] for k in self.idx2word.keys() if k > 3]
+
+    def from_none(self):
+        for word, idx in self.word2idx.items():
+            self.idx2word[idx] = word
+        self._done = True
 	
     def from_file(self, index_file):
         assert not self._done, "the indexer has already been initialized."

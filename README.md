@@ -1,5 +1,7 @@
 # Fast and Modularized Implementations of XCFGs
 
+**Update (08/06/2023):** Add an evaluation of the transferability of [VC-PCFG](https://arxiv.org/abs/2310.14107).
+
 **Update (12/12/2021):** Add an implementation of [VC-PCFG](https://github.com/zhaoyanpeng/vpcfg).
 
 **Update (03/10/2021):** Fast and modularized implementations of [XCFGs](https://github.com/zhaoyanpeng/xcfg).
@@ -69,6 +71,17 @@ pip install -e .
 ## Citation
 If you use the fast implementation of C-PCFGs in your research or wish to refer to the results in the [report](https://arxiv.org/abs/2103.02298), please use the following BibTeX entries.
 ```
+@inproceedings{zhao-titov-2023-transferability,
+    title = "On the Transferability of Visually Grounded {PCFGs}",
+    author = "Zhao, Yanpeng  and Titov, Ivan",
+    booktitle = "Findings of the Association for Computational Linguistics: EMNLP 2023",
+    month = dec,
+    year = "2023",
+    address = "Singapore",
+    publisher = "Association for Computational Linguistics",
+}
+```
+```
 @inproceedings{zhao-titov-2021-empirical,
     title = "An Empirical Study of Compound {PCFG}s",
     author = "Zhao, Yanpeng and Titov, Ivan",
@@ -82,31 +95,17 @@ If you use the fast implementation of C-PCFGs in your research or wish to refer 
 }
 ```
 ```
-@inproceedings{kim2019compound,
-  title    = {Compound Probabilistic Context-Free Grammars for Grammar Induction},
-  author   = {Kim, Yoon and Dyer, Chris and Rush, Alexander},
-  booktitle= {Proceedings of the 57th Annual Meeting of the Association for Computational Linguistics},
-  address  = {Florence, Italy},
-  publisher= {Association for Computational Linguistics},
-  url      = {https://www.aclweb.org/anthology/P19-1228},
-  doi      = {10.18653/v1/P19-1228},
-  pages    = {2369--2385},
-  month    = {jul},
-  year     = {2019},
-}
-```
-```
-@inproceedings{rush2020torch,
-  title    = {Torch-Struct: Deep Structured Prediction Library},
-  author   = {Rush, Alexander},
-  booktitle= {Proceedings of the 58th Annual Meeting of the Association for Computational Linguistics: System Demonstrations},
-  address  = {Online},
-  publisher= {Association for Computational Linguistics},
-  url      = {https://www.aclweb.org/anthology/2020.acl-demos.38},
-  doi      = {10.18653/v1/2020.acl-demos.38},
-  pages    = {335--342},
-  month    = {jul},
-  year     = {2020},
+@inproceedings{zhao-titov-2020-visually,
+    title = "Visually Grounded Compound {PCFG}s",
+    author = "Zhao, Yanpeng  and Titov, Ivan",
+    booktitle = "Proceedings of the 2020 Conference on Empirical Methods in Natural Language Processing (EMNLP)",
+    month = nov,
+    year = "2020",
+    address = "Online",
+    publisher = "Association for Computational Linguistics",
+    url = "https://aclanthology.org/2020.emnlp-main.354",
+    doi = "10.18653/v1/2020.emnlp-main.354",
+    pages = "4369--4379",
 }
 ```
 

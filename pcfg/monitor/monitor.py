@@ -137,6 +137,7 @@ class Monitor(object):
         if self.cfg.eval:
             self.num_tag = kwargs.get("num_tag", None) 
             self.vocab = kwargs.get("vocab", None) 
+            self.echo(f"Amended (evaluation) vocab size: {len(self.vocab)}.")
 
     def build_data(self):
         if self.cfg.eval:
@@ -557,7 +558,8 @@ class Monitor(object):
         
         data_name = (dataloader.rsplit("/", 1)[1]).rsplit(".", 1)[0]
         model_name = self.cfg.model_file.rsplit(".", 1)[0]
-        out_file_prefix = f"{self.cfg.model_root}/{self.cfg.model_name}/{model_name}-{data_name}"
+        out_prefix = getattr(self.cfg.data, "out_prefix", "default")
+        out_file_prefix = f"{self.cfg.model_root}/{self.cfg.model_name}/{model_name}-{out_prefix}-{data_name}"
         pred_out_file = f"{out_file_prefix}.pred"
         gold_out_file = f"{out_file_prefix}.gold"
         pred_out_fw = open(pred_out_file, "w")

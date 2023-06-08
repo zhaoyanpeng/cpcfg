@@ -118,3 +118,73 @@ class LexiconPCFG(NaivePCFG):
 
         self.load_state_dict(new_dict, strict=strict)
         return n_o, o_n
+
+    def from_pretrained_transfer(
+        self, state_dict, vocab_new, vocab_old, excluded={}, strict=True, unknown_init=None
+    ):
+        excluded = [] if strict else (self.excluded if len(excluded) == 0 else excluded)
+        excluded = {"term_mlp\.4\.*", "enc_emb"} # account for dynamic vocabulary
+        pattern = "|".join([f"^{m}\." for m in excluded])
+        new_dict = self.state_dict()
+        old_dict = {
+            k: v for k, v in state_dict.items() if pattern == "" or not re.match(pattern, k)
+        }
+
+        new_keys = set(new_dict.keys())
+        old_keys = set(old_dict.keys())
+        new_dict.update(old_dict)
+        n_o = new_keys - old_keys
+        o_n = old_keys - new_keys
+        #print(f"{n_o}\n{o_n}")
+
+        self.load_state_dict(new_dict, strict=False)
+
+        #emb1, mlp1 = self.enc_emb, self.term_mlp[-1]
+
+        #print(emb1.tuned_weight[:2, :10])
+        #print(mlp1.tuned_weight[:2, :10])
+        #print((emb1.tuned_weight == mlp1.tuned_weight).all())
+        #import sys; sys.exit(0)
+
+        # load learned word embeddings
+        cfg = self.cfg
+        enc_emb_old = PartiallyFixedEmbedding(
+            vocab_old, cfg.w2vec_file, word_dim=cfg.w_dim, out_dim=-1,
+        )
+        enc_emb_old_dict = {
+            k.rsplit(".", 1)[-1]: v for k, v in state_dict.items() if re.match("enc_emb", k)
+        }
+        enc_emb_old.load_state_dict(enc_emb_old_dict, strict=True)
+
+        # new words that are outside of the pre-trained ones (e.g., Glove)
+        # but are contained in the learned ones (e.g., the loaded model)
+        if unknown_init == "random":
+            pass # randomly initialize the embeddings of new words
+        elif unknown_init == "unknown":
+            # set the emebddigns of new words to that of the unknown words
+            unknown_word = "<unk>"
+            wids_new = self.enc_emb.get_tunable_word_list()
+            assert vocab_old.has(unknown_word)
+            wid_old = vocab_old.idx(unknown_word)
+            vec_old = enc_emb_old.get_word_vector(wid_old)
+            #wid_new = vocab_new.idx(unknown_word)
+            #vec_new = self.enc_emb.get_word_vector(wid_new)
+            #print((vec_new == vec_old).all())
+            for wid_new in wids_new:
+                self.enc_emb.set_word_vector(wid_new, vec_old)
+        else: # the standard way
+            wids_new = self.enc_emb.get_tunable_word_list()
+            for wid_new in wids_new:
+                word = vocab_new(wid_new)
+                if not vocab_old.has(word):
+                    continue
+                wid_old = vocab_old.idx(word)
+                vec_old = enc_emb_old.get_word_vector(wid_old)
+                self.enc_emb.set_word_vector(wid_new, vec_old)
+
+        #print(emb1.tuned_weight[:2, :10])
+        #print(mlp1.tuned_weight[:2, :10])
+        #print((emb1.tuned_weight == mlp1.tuned_weight).all())
+        #import sys; sys.exit(0)
+
+        return n_o, o_n

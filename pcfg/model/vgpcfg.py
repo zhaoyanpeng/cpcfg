@@ -56,7 +56,21 @@ class VGPCFG(CTTP):
 
     def build(self, vocab=None, vocab_zh=None, num_tag=0, **kwargs):
         tunable_params = dict()
-        if self.cfg.eval:
+        transfer_eval = getattr(self.cfg, "transfer_eval", None)
+        if transfer_eval is not None:
+            local_cfg, sds, vocab_old, _, num_tag = load_checkpoint(self.cfg, self.echo)
+            pcfg_head_sd, gold_head_sd, text_head_sd, loss_head_sd = sds
+            self.build_model(
+                vocab, vocab_zh=vocab_zh, num_tag=num_tag
+            )
+            n_o, o_n = self.pcfg_head.from_pretrained_transfer(
+                pcfg_head_sd, vocab, vocab_old, strict=True, unknown_init=transfer_eval
+            )
+            msg = f" except {n_o}" if len(n_o) > 0 else ""
+            self.echo(f"Initialize `{transfer_eval}` pcfg encoder from `pcfg_head`{msg}.")
+            tunable_params = {"vocab": vocab, "num_tag": num_tag}
+            # TODO overide gold head, text head, and loss head
+        elif self.cfg.eval: # the vocab is overriden by the loaded one
             local_cfg, sds, vocab, _, num_tag = load_checkpoint(self.cfg, self.echo)
             pcfg_head_sd, gold_head_sd, text_head_sd, loss_head_sd = sds
             self.build_model(

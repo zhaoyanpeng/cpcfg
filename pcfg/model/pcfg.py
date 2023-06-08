@@ -37,7 +37,7 @@ class XPCFG(nn.Module):
         meter(
             nll=nll.detach().sum().item(), kl=kl.detach().sum().item()
         )
-        loss = (nll + kl).mean()
+        loss = (nll + 0).mean()
         return loss, (argmax_spans, argmax_trees)
     
     def tokenizer(self):

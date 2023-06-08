@@ -54,6 +54,9 @@ class Monitor(Monitor):
     def build_data(self):
         if self.cfg.eval and os.path.isfile(self.cfg.data.eval_name):
             self.vocab = self.num_tag = None
+            if getattr(self.cfg, "transfer_eval", False): # new vocab for transfer-eval
+                self.vocab = Indexer(f"{self.cfg.data.main_vocab}")
+                self.echo(f"Vocab size (transfer): {len(self.vocab)}.")
             self.dataloader = self.evalloader = self.testloader = None
             self.evalfile = self.cfg.data.eval_name #f"{self.cfg.data.data_root}/{self.cfg.data.eval_name}"
             return # test MSCOCO parser on WSJ TODO the two datasets have different data roots, so I have to...
